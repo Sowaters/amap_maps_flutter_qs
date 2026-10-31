@@ -1,0 +1,39 @@
+name: amap_maps_flutter_qs
+description: >-
+  AMap (Gaode / 高德地图) 3D map plugin for Flutter. A modern, maintained
+  successor of the abandoned `amap_flutter_map`, with Dart 3 sealed-class
+  overlays, stream-based events and full privacy-compliance APIs.
+version: 0.0.1
+homepage: https://github.com/qs-labs/amap_maps_flutter_qs
+# 发布前占位：仓库地址确定后更新
+topics: [map, amap, gaode, maps, china, amap-maps]
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.22.0'
+
+dependencies:
+  clipper2: ^0.0.3
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see
+# https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+  # This section identifies this Flutter project as a plugin project.
+  # The 'pluginClass' specifies the class (in Java, Kotlin, Swift, etc.)
+  # which should be registered in the plugin registry.
+  plugin:
+    platforms:
+      android:
+        package: dev.qs.amapmapsflutterqs.amap_maps_flutter_qs
+        pluginClass: AmapMapsFlutterQsPlugin
+      ios:
+        pluginClass: AmapMapsFlutterQsPlugin
