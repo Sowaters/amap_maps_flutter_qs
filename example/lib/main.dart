@@ -55,8 +55,8 @@ final _entries = <_DemoEntry>[
   _DemoEntry(
     Icons.location_pin,
     '覆盖物管理',
-    'Marker 增删改（差量更新）、图标工厂（bytes/asset/hue）、anchor/flat/visible/zIndex、'
-        'showInfoWindow；Polyline geodesic / 纹理线 / 虚线样式',
+    '细分 5 个子页：Marker 增删改与图标工厂、Marker 属性与气泡控制、'
+        'Polyline（geodesic/纹理/虚线/平滑/箭头）、Polygon（镂空/孔洞）、Circle',
     (_) => const OverlaysPage(),
   ),
   _DemoEntry(

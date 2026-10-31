@@ -25,4 +25,6 @@ export 'src/overlay/overlay_enums.dart';
 export 'src/util/amap_util.dart';
 export 'src/util/amap_widget_renderer.dart';
 export 'src/util/geometry_util.dart';
+export 'src/util/line_arrows.dart';
+export 'src/util/line_smoothing.dart';
 export 'src/widget/amap_widget.dart';

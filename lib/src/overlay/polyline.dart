@@ -35,6 +35,54 @@ class Polyline extends MapObject {
   /// 点击回调。
   final void Function(String polylineId)? onTap;
 
+  /// 平滑曲线折线：把稀疏控制点经 Catmull-Rom 样条加密后交给原生绘制。
+  ///
+  /// 这是「连线变曲线」的跨端通用做法 —— 原生折线在顶点之间只会画
+  /// 直线段，本工厂先在 Dart 侧插值出密集中间点再创建普通 [Polyline]，
+  /// Android / iOS 表现完全一致。见 [LineSmoothing.smoothCurve]。
+  ///
+  /// 注意：保存进 [points] 的是加密后的曲线顶点，原始控制点不再保留；
+  /// 需要基于控制点做后续修改时，请自行保存控制点后重新调用本工厂。
+  factory Polyline.smooth({
+    required List<LatLng> points,
+    int segmentsPerPair = 16,
+    double tension = 1.0,
+    bool closed = false,
+    String? id,
+    double width = 10.0,
+    bool visible = true,
+    bool geodesic = false,
+    double alpha = 1.0,
+    DashLineType dashLineType = DashLineType.none,
+    CapType capType = CapType.butt,
+    JoinType joinType = JoinType.bevel,
+    BitmapDescriptor? customTexture,
+    Color color = const Color(0xCCC4E0F0),
+    void Function(String polylineId)? onTap,
+    double zIndex = 0.0,
+  }) {
+    return Polyline(
+      id: id,
+      points: LineSmoothing.smoothCurve(
+        points,
+        segmentsPerPair: segmentsPerPair,
+        tension: tension,
+        closed: closed,
+      ),
+      width: width,
+      visible: visible,
+      geodesic: geodesic,
+      alpha: alpha,
+      dashLineType: dashLineType,
+      capType: capType,
+      joinType: joinType,
+      customTexture: customTexture,
+      color: color,
+      onTap: onTap,
+      zIndex: zIndex,
+    );
+  }
+
   Polyline({
     super.id,
     required this.points,

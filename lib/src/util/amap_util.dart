@@ -41,5 +41,23 @@ abstract final class AMapUtil {
     return distanceBetween(point, nearest);
   }
 
+  /// 从 [from] 指向 [to] 的初始方位角（度）。
+  ///
+  /// 正北为 0，顺时针增加：东 90、南 180、西 270，范围 [0, 360)。
+  /// 注意：这是导航/罗盘约定；高德 Android `Marker.setRotateAngle`
+  /// 为逆时针约定，换算见 `LineArrows`。
+  static double bearingBetween(LatLng from, LatLng to) {
+    final phi1 = from.latitude * _degToRad;
+    final phi2 = to.latitude * _degToRad;
+    final dLng = (to.longitude - from.longitude) * _degToRad;
+
+    final y = math.sin(dLng) * math.cos(phi2);
+    final x =
+        math.cos(phi1) * math.sin(phi2) -
+        math.sin(phi1) * math.cos(phi2) * math.cos(dLng);
+    final bearing = math.atan2(y, x) / _degToRad;
+    return (bearing + 360.0) % 360.0;
+  }
+
   static const double _degToRad = math.pi / 180.0;
 }

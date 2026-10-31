@@ -28,6 +28,7 @@ import com.amap.api.maps.model.Polygon
 import com.amap.api.maps.model.PolygonOptions
 import com.amap.api.maps.model.Polyline
 import com.amap.api.maps.model.PolylineOptions
+import io.flutter.FlutterInjector
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -60,6 +61,7 @@ class AMapPlatformView(
     }
 
     private val mapId: Int = (creationParams["mapId"] as? Number)?.toInt() ?: -1
+    private val appContext: Context = context.applicationContext
     private val mapView = MapView(context)
     private val amap: AMap = mapView.map
     private val channel = MethodChannel(
@@ -839,33 +841,67 @@ class AMapPlatformView(
         return when (map["type"] as? String) {
             // SDK 默认图标（可带色相着色）
             "defaultMarker" ->
-                iconCache.get("default") ?: BitmapDescriptorFactory.defaultMarker().also {
+                iconCache.get("default") ?: BitmapDescriptorFactory.defaultMarker()?.also {
                     iconCache.put("default", it)
                 }
             "defaultMarkerWithHue" ->
                 (map["hue"] as? Number)?.let { hue ->
                     val key = "hue:$hue"
-                    iconCache.get(key) ?: BitmapDescriptorFactory.defaultMarker(hue.toFloat()).also {
+                    iconCache.get(key) ?: BitmapDescriptorFactory.defaultMarker(hue.toFloat())?.also {
                         iconCache.put(key, it)
                     }
                 }
-            // asset 路径；assetImage 类型去除分辨率目录前缀（如 "2.0x/"）
-            "asset", "assetImage" -> (map["asset"] as? String)?.let { path ->
-                val name = path.replace(Regex("""^\d+(\.\d+)?x/"""), "")
-                val key = "asset:$name"
-                iconCache.get(key) ?: BitmapDescriptorFactory.fromAsset(name).also {
-                    iconCache.put(key, it)
-                }
-            }
+            // Flutter 资源（fromIconPath / fromAssetImage），见 assetIcon()
+            "asset", "assetImage" -> (map["asset"] as? String)?.let { path -> assetIcon(path) }
             "bytes" -> (map["bytes"] as? ByteArray)?.let { bytes ->
                 val key = bytes.cacheKey()
                 iconCache.get(key) ?: BitmapFactory
                     .decodeByteArray(bytes, 0, bytes.size)
                     ?.let { BitmapDescriptorFactory.fromBitmap(it) }
                     ?.also { iconCache.put(key, it) }
+                    ?: run {
+                        Log.e(TAG, "Failed to decode icon bytes (${bytes.size} bytes)")
+                        null
+                    }
             }
             else -> null
         }
+    }
+
+    /// Flutter 资源图标 → BitmapDescriptor。
+    ///
+    /// Flutter 资源打包在 APK 的 `flutter_assets/` 目录下，不能把 Dart 侧
+    /// 的 asset 路径直接交给高德 `BitmapDescriptorFactory.fromAsset`（它按
+    /// APK 根路径打开，必然失败返回 null；旧实现把返回的 null 缓存进
+    /// LruCache，触发 `key == null || value == null` 崩溃）。
+    /// 这里用 Flutter embedding 的 `getLookupKeyForAsset` 解析出真实路径
+    /// （如 `flutter_assets/assets/texture_green.png`），自行解码后走
+    /// `fromBitmap`。分辨率变体（"2.0x/" 前缀）优先按原始路径查找，
+    /// 失败再回退去掉变体目录的基础路径。
+    ///
+    /// 任何失败只记日志并返回 null，绝不缓存 null —— 调用方对 null 已有
+    /// 兜底（Marker 回退默认图标 / Polyline 回退纯色）。
+    private fun assetIcon(path: String): com.amap.api.maps.model.BitmapDescriptor? {
+        iconCache.get("asset:$path")?.let { return it }
+        val stripped = path.replace(Regex("""^\d+(\.\d+)?x/"""), "")
+        val candidates = if (stripped == path) listOf(path) else listOf(path, stripped)
+        for (candidate in candidates) {
+            val lookupKey = FlutterInjector.instance()
+                .flutterLoader()
+                .getLookupKeyForAsset(candidate)
+            val bitmap = try {
+                appContext.assets.open(lookupKey).use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            return BitmapDescriptorFactory.fromBitmap(bitmap)?.also {
+                iconCache.put("asset:$path", it)
+            }
+        }
+        Log.e(TAG, "Failed to load Flutter asset icon: $path")
+        return null
     }
 
     private fun LatLng.toJsonList() = listOf(latitude, longitude)

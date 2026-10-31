@@ -8,6 +8,7 @@ import 'package:flutter/painting.dart' show AssetImage, ImageConfiguration;
 import 'package:flutter/services.dart' show AssetBundle;
 
 import '../model/latlng.dart';
+import '../util/line_smoothing.dart';
 import 'overlay_enums.dart';
 
 part 'marker.dart';
