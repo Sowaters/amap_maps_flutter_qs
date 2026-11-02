@@ -8,7 +8,7 @@ import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 /// iOS Info.plist 配置（见插件 README）。
 const demoApiKey = AMapApiKey(
   androidKey: 'YOUR_ANDROID_KEY',
-  iosKey: 'YOUR_IOS_KEY',
+  iosKey: '44d699653f9f0b3f4b90ee4b15e9f6ca',
 );
 
 /// ⚠️ 隐私合规：

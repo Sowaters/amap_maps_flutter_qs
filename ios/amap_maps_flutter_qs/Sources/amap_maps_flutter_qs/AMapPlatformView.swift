@@ -1,4 +1,4 @@
-import AMap3DMap
+import MAMapKit
 import CryptoKit
 import Flutter
 import Foundation
@@ -61,15 +61,11 @@ final class QsPolygon: MAPolygon {
   ) {
     self.customId = customId
     self.json = json
-    if holes.isEmpty {
-      super.init(coordinates: coordinates, count: coordinates.count)
-    } else {
-      let interior = holes.map { MAPolygon(coordinates: $0, count: $0.count) }
-      super.init(
-        coordinates: coordinates,
-        count: coordinates.count,
-        interiorPolygons: interior)
-    }
+    super.init()
+    // 注意：高德 SDK 11.2 移除了 interiorPolygons（镂空）API，iOS 端暂不支持 holes，
+    // holes 参数保留以兼容 Dart 侧接口。
+    var coords = coordinates
+    _ = super.setPolygonWithCoordinates(&coords, count: coords.count)
   }
 }
 
@@ -191,16 +187,16 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
   private func applyUiOptions(_ json: Any?) {
     guard let options = json as? [String: Any] else { return }
     if let traffic = options["trafficEnabled"] as? Bool {
-      mapView.showTraffic = traffic
+      mapView.isShowTraffic = traffic
     }
     if let touchPoi = options["touchPoiEnabled"] as? Bool {
       mapView.touchPOIEnabled = touchPoi
     }
     if let buildings = options["buildingsEnabled"] as? Bool {
-      mapView.showsBuildings = buildings
+      mapView.isShowsBuildings = buildings
     }
     if let labels = options["labelsEnabled"] as? Bool {
-      mapView.showsLabels = labels
+      mapView.isShowsLabels = labels
     }
     if let compass = options["compassEnabled"] as? Bool {
       mapView.showsCompass = compass
@@ -250,7 +246,7 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
   private func currentMapStatus() -> MAMapStatus {
     mapView.getMapStatus()
       ?? MAMapStatus(
-        centerCoordinate: CLLocationCoordinate2D(latitude: 39.909187, longitude: 116.397451),
+        center: CLLocationCoordinate2D(latitude: 39.909187, longitude: 116.397451),
         zoomLevel: 10, rotationDegree: 0, cameraDegree: 0,
         screenAnchor: CGPoint(x: 0.5, y: 0.5))
   }
@@ -278,7 +274,7 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
         if marker.title == nil { marker.title = "\u{200B}" }
         if marker.subtitle == nil { marker.subtitle = "\u{200B}" }
       }
-      showOnCreate = info["show"] == true
+      showOnCreate = (info["show"] as? Bool) == true
     }
     markersById[id] = marker
     mapView.add(marker)
@@ -290,18 +286,21 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
   }
 
   private func addPolyline(_ json: [String: Any]) {
+    let points = jsonToLatLngList(json["points"])
     guard let id = json["id"] as? String, polylinesById[id] == nil,
-      let points = jsonToLatLngList(json["points"]), points.count >= 2
+      points.count >= 2
     else { return }
     let polyline = QsPolyline(customId: id, json: json)
-    polyline.setCoordinates(points, count: points.count)
+    var pts = points
+    _ = polyline.setPolylineWithCoordinates(&pts, count: pts.count)
     polylinesById[id] = polyline
     mapView.add(polyline)
   }
 
   private func addPolygon(_ json: [String: Any]) {
+    let points = jsonToLatLngList(json["points"])
     guard let id = json["id"] as? String, polygonsById[id] == nil,
-      let points = jsonToLatLngList(json["points"]), points.count >= 3
+      points.count >= 3
     else { return }
     let holes = (json["holes"] as? [[Any]])?.compactMap(jsonToLatLngList) ?? []
     let polygon = QsPolygon(
@@ -531,7 +530,7 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
       center.x += CGFloat(dx / scale)
       center.y += CGFloat(dy / scale)
       var status = currentMapStatus()
-      status.centerCoordinate = mapView.convertPoint(center, toCoordinateFromView: mapView)
+      status.centerCoordinate = mapView.convert(center, toCoordinateFrom: mapView)
       mapView.setMapStatus(status, animated: animated, duration: duration)
     default:
       break
@@ -607,17 +606,13 @@ extension AMapPlatformView: MAMapViewDelegate {
     notifyDart("cameraMove", cameraJson())
   }
 
-  /// 单击地图（官方委托方法名为 didSingleTappedAtCoordinate）
-  public func mapView(
-    _ mapView: MAMapView, didSingleTappedAtCoordinate coordinate: CLLocationCoordinate2D
-  ) {
+  /// 单击地图（SDK 11.x 委托方法名为 didSingleTappedAt）
+  public func mapView(_ mapView: MAMapView, didSingleTappedAt coordinate: CLLocationCoordinate2D) {
     notifyDart("mapTap", [coordinate.latitude, coordinate.longitude])
   }
 
-  /// 长按事件（官方委托方法名为 didLongPressedAtCoordinate）
-  public func mapView(
-    _ mapView: MAMapView, didLongPressedAtCoordinate coordinate: CLLocationCoordinate2D
-  ) {
+  /// 长按事件（SDK 11.x 委托方法名为 didLongPressedAt）
+  public func mapView(_ mapView: MAMapView, didLongPressedAt coordinate: CLLocationCoordinate2D) {
     notifyDart("mapLongPress", [coordinate.latitude, coordinate.longitude])
   }
 
@@ -696,7 +691,7 @@ extension AMapPlatformView: MAMapViewDelegate {
   public func mapView(
     _ mapView: MAMapView,
     annotationView view: MAAnnotationView,
-    didChangeDragState newState: MAAnnotationViewDragState,
+    didChange newState: MAAnnotationViewDragState,
     fromOldState oldState: MAAnnotationViewDragState
   ) {
     guard newState == .ending, let marker = view.annotation as? QsMarker else { return }
@@ -713,7 +708,8 @@ extension AMapPlatformView: MAMapViewDelegate {
   public func mapView(_ mapView: MAMapView, rendererFor overlay: MAOverlay) -> MAOverlayRenderer? {
     switch overlay {
     case let polyline as QsPolyline:
-      let renderer = MAPolylineRenderer(polyline: polyline)
+      // SDK 11.2 起 renderer 初始化器为可失败（setPolyline 可能失败）
+      guard let renderer = MAPolylineRenderer(polyline: polyline) else { return nil }
       renderer.lineWidth = (polyline.json["width"] as? CGFloat) ?? 10
       let stroke = color(
         polyline.json["color"], fallback: UIColor(red: 0, green: 0, blue: 1, alpha: 0.8))
@@ -724,13 +720,13 @@ extension AMapPlatformView: MAMapViewDelegate {
       // 虚线：MALineDashType 只有 none / square / dot
       // （无 .dash；dash/dashDot → square，dot → dot，capType/joinType 为 Android 专属）
       switch polyline.json["dashLineType"] as? String {
-      case "dash", "dashDot": renderer.lineDashType = .square
-      case "dot": renderer.lineDashType = .dot
-      default: renderer.lineDashType = .none
+      case "dash", "dashDot": renderer.lineDashType = kMALineDashTypeSquare
+      case "dot": renderer.lineDashType = kMALineDashTypeDot
+      default: renderer.lineDashType = kMALineDashTypeNone
       }
       return renderer
     case let polygon as QsPolygon:
-      let renderer = MAPolygonRenderer(polygon: polygon)
+      guard let renderer = MAPolygonRenderer(polygon: polygon) else { return nil }
       renderer.lineWidth = (polygon.json["strokeWidth"] as? CGFloat) ?? 10
       renderer.strokeColor = color(
         polygon.json["strokeColor"], fallback: UIColor.black.withAlphaComponent(0.8))
@@ -741,7 +737,7 @@ extension AMapPlatformView: MAMapViewDelegate {
         : color(polygon.json["fillColor"], fallback: UIColor.clear)
       return renderer
     case let circle as QsCircle:
-      let renderer = MACircleRenderer(circle: circle)
+      guard let renderer = MACircleRenderer(circle: circle) else { return nil }
       renderer.lineWidth = (circle.json["strokeWidth"] as? CGFloat) ?? 10
       renderer.strokeColor = color(
         circle.json["strokeColor"], fallback: UIColor.black.withAlphaComponent(0.8))

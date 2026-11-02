@@ -207,6 +207,42 @@ class _AMapWidgetState extends State<AMapWidget> {
     'amap_maps_flutter_qs/map#$_mapId',
   );
 
+  /// 原生 PlatformView 是否已创建。
+  ///
+  /// iOS 的 UiKitView 与 Android 的 initExpensiveAndroidView 均为异步创建：
+  /// build() 返回后原生 AMapPlatformView（即 `map#<mapId>` 通道 handler 的
+  /// 注册方）稍后才存在。创建完成前任何通道下发都会 MissingPluginException。
+  bool _platformViewCreated = false;
+
+  /// 创建完成前暂存的通道调用，创建后按序冲刷（对齐 google_maps_flutter 做法）。
+  final List<(String method, Object? args)> _pendingCalls = [];
+
+  /// 通道下发统一入口：未创建前入队，创建后直接下发。
+  Future<void> _invokeMapMethod(String method, [Object? args]) async {
+    if (!_platformViewCreated) {
+      _pendingCalls.add((method, args));
+      return;
+    }
+    try {
+      await _channel.invokeMethod<void>(method, args);
+    } on MissingPluginException {
+      // 原生地图实例已销毁（如页面快速关闭 / dispose 后的迟到调用），静默丢弃
+    }
+  }
+
+  /// PlatformView 创建完成（framework 侧 onPlatformViewCreated 与
+  /// 原生 mapCreated 两条路径都会到达，幂等）。
+  void _markPlatformViewCreated() {
+    if (_platformViewCreated) return;
+    _platformViewCreated = true;
+    if (_pendingCalls.isEmpty) return;
+    final calls = List.of(_pendingCalls);
+    _pendingCalls.clear();
+    for (final (method, args) in calls) {
+      _invokeMapMethod(method, args);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -220,7 +256,7 @@ class _AMapWidgetState extends State<AMapWidget> {
     if (!identical(oldWidget.markers, widget.markers)) {
       final updates = MarkerUpdates.from(oldWidget.markers, widget.markers);
       if (!updates.isEmpty) {
-        _channel.invokeMethod<void>('map#updateMarkers', updates.toJson());
+        _invokeMapMethod('map#updateMarkers', updates.toJson());
       }
     }
     if (!identical(oldWidget.polylines, widget.polylines)) {
@@ -229,35 +265,32 @@ class _AMapWidgetState extends State<AMapWidget> {
         widget.polylines,
       );
       if (!updates.isEmpty) {
-        _channel.invokeMethod<void>('map#updatePolylines', updates.toJson());
+        _invokeMapMethod('map#updatePolylines', updates.toJson());
       }
     }
     if (!identical(oldWidget.polygons, widget.polygons)) {
       final updates = PolygonUpdates.from(oldWidget.polygons, widget.polygons);
       if (!updates.isEmpty) {
-        _channel.invokeMethod<void>('map#updatePolygons', updates.toJson());
+        _invokeMapMethod('map#updatePolygons', updates.toJson());
       }
     }
     if (!identical(oldWidget.circles, widget.circles)) {
       final updates = CircleUpdates.from(oldWidget.circles, widget.circles);
       if (!updates.isEmpty) {
-        _channel.invokeMethod<void>('map#updateCircles', updates.toJson());
+        _invokeMapMethod('map#updateCircles', updates.toJson());
       }
     }
     if (oldWidget.mapType != widget.mapType) {
-      _channel.invokeMethod<void>('map#setMapType', widget.mapType.toJson());
+      _invokeMapMethod('map#setMapType', widget.mapType.toJson());
     }
     if (oldWidget.minMaxZoomPreference != widget.minMaxZoomPreference) {
-      _channel.invokeMethod<void>(
+      _invokeMapMethod(
         'map#setMinMaxZoomPreference',
         widget.minMaxZoomPreference.toJson(),
       );
     }
     if (oldWidget.limitBounds != widget.limitBounds) {
-      _channel.invokeMethod<void>(
-        'map#setLimitBounds',
-        widget.limitBounds?.toJson(),
-      );
+      _invokeMapMethod('map#setLimitBounds', widget.limitBounds?.toJson());
     }
     // 手势开关：任一变化即整体下发
     final gesturesChanged =
@@ -266,7 +299,7 @@ class _AMapWidgetState extends State<AMapWidget> {
         oldWidget.rotateGesturesEnabled != widget.rotateGesturesEnabled ||
         oldWidget.tiltGesturesEnabled != widget.tiltGesturesEnabled;
     if (gesturesChanged) {
-      _channel.invokeMethod<void>('map#setGestures', _gestures);
+      _invokeMapMethod('map#setGestures', _gestures);
     }
     // UI 开关类选项：任一变化即整体下发（原生端逐项应用）
     final uiChanged =
@@ -277,12 +310,13 @@ class _AMapWidgetState extends State<AMapWidget> {
         oldWidget.compassEnabled != widget.compassEnabled ||
         oldWidget.scaleEnabled != widget.scaleEnabled;
     if (uiChanged) {
-      _channel.invokeMethod<void>('map#setUiOptions', _uiOptions);
+      _invokeMapMethod('map#setUiOptions', _uiOptions);
     }
   }
 
   @override
   void dispose() {
+    _pendingCalls.clear();
     _channel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -290,6 +324,8 @@ class _AMapWidgetState extends State<AMapWidget> {
   Future<dynamic> _handleNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'mapCreated':
+        // 原生侧的兜底通知（framework onPlatformViewCreated 通常先到，幂等）
+        _markPlatformViewCreated();
         widget.onMapCreated?.call(AMapController.createFor(_mapId));
       case 'mapLoaded':
         widget.onMapLoaded?.call();
@@ -410,7 +446,11 @@ class _AMapWidgetState extends State<AMapWidget> {
               layoutDirection: TextDirection.ltr,
               creationParams: _creationParams,
               creationParamsCodec: const StandardMessageCodec(),
-            )..addOnPlatformViewCreatedListener(params.onPlatformViewCreated);
+            )
+              ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+              ..addOnPlatformViewCreatedListener(
+                (_) => _markPlatformViewCreated(),
+              );
           },
         );
       case TargetPlatform.iOS:
@@ -418,6 +458,7 @@ class _AMapWidgetState extends State<AMapWidget> {
           viewType: _viewType,
           creationParams: _creationParams,
           creationParamsCodec: const StandardMessageCodec(),
+          onPlatformViewCreated: (_) => _markPlatformViewCreated(),
           gestureRecognizers:
               widget.gestureRecognizers ??
               const <Factory<OneSequenceGestureRecognizer>>{},
