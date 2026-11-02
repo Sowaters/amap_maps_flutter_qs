@@ -34,7 +34,7 @@ class _MapTypesPageState extends State<MapTypesPage> {
   bool _scale = true;
   bool _touchPoi = true;
 
-  // 可视范围限制（动态更新：map#setLimitBounds，仅 Android 生效）
+  // 可视范围限制（动态更新：map#setLimitBounds，Android / iOS 均生效）
   bool _limitBounds = false;
 
   @override
@@ -73,7 +73,7 @@ class _MapTypesPageState extends State<MapTypesPage> {
                         child: const Padding(
                           padding: EdgeInsets.all(8),
                           child: Text(
-                            'limitBounds 已启用：中心点被限制在\n北京五环范围内（仅 Android）',
+                            'limitBounds 已启用：中心点被限制在\n北京五环范围内（Android / iOS）',
                             style: TextStyle(fontSize: 11),
                           ),
                         ),
@@ -127,7 +127,7 @@ class _MapTypesPageState extends State<MapTypesPage> {
             }),
           ),
           _SwitchRow(
-            title: '可视范围限制（map#setLimitBounds，仅 Android）',
+            title: '可视范围限制（map#setLimitBounds）',
             labels: const ['限制在北京五环'],
             values: [_limitBounds],
             onChanged: (_, v) => setState(() => _limitBounds = v),

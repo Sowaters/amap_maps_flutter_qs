@@ -64,7 +64,6 @@ final class QsPolygon: MAPolygon {
     if holes.isEmpty {
       super.init(coordinates: coordinates, count: coordinates.count)
     } else {
-      // 孔洞环（命名需 macOS 构建验证）
       let interior = holes.map { MAPolygon(coordinates: $0, count: $0.count) }
       super.init(
         coordinates: coordinates,
@@ -91,6 +90,9 @@ final class QsCircle: MACircle {
 ///
 /// 覆盖物同步：与 Android 端一致，Dart 侧差量 diff 后下发
 /// `toAdd / toUpdate / toRemove`；update 一律「删旧 + 建新」。
+///
+/// 相机操作使用 iOS SDK 的 `MAMapStatus` + `setMapStatus:animated:duration:`
+/// 体系（与官方 amap_flutter_map 一致）；iOS SDK 无 MACameraUpdate/MACameraPosition。
 public class AMapPlatformView: NSObject, FlutterPlatformView {
   private let mapId: Int
   private let mapView: MAMapView
@@ -124,24 +126,26 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
   // ---- 初始配置（creationParams） ----
 
   private func applyInitialOptions(_ params: [String: Any]) {
-    // 地图类型（原生枚举值：1 normal / 2 satellite / 3 night / 4 navi / 5 bus）
+    // 地图类型：Dart 侧 MapType.nativeCode 为 Android 编码 1..5，
+    // iOS MAMapType 为 0..4（Standard=0/Satellite=1/Night=2/Navi=3/Bus=4，
+    // 官方插件 Dart 传 mapType.index 后 iOS 直接赋值），故统一 -1 映射。
     if let typeCode = params["mapType"] as? Int {
-      mapView.mapType = MAMapType(rawValue: typeCode) ?? .standard
+      applyMapTypeCode(typeCode)
     }
 
-    // 缩放范围
+    // 缩放范围：iOS SDK 为独立属性 minZoomLevel / maxZoomLevel
     if let minZoom = params["minZoom"] as? Double {
-      mapView.setMinZoomLevel(minZoom, maxZoomLevel: nil)
+      mapView.minZoomLevel = CGFloat(minZoom)
     }
     if let maxZoom = params["maxZoom"] as? Double {
-      mapView.setMinZoomLevel(nil, maxZoomLevel: maxZoom)
+      mapView.maxZoomLevel = CGFloat(maxZoom)
     }
 
     // 定位蓝点
     mapView.showsUserLocation = (params["myLocationEnabled"] as? Bool) ?? false
     // TODO(MVP): myLocationStyle（MAUserLocationRepresentation）与 customStyle 的 iOS 对接
 
-    // 手势开关（US-04；属性名需 macOS 构建验证）
+    // 手势开关（US-04）
     applyGestures(params["gestures"])
 
     // UI 开关（路况/POI 点击/建筑物/标注/指南针/比例尺）
@@ -150,6 +154,12 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     // 初始相机
     if let camera = params["initialCameraPosition"] as? [String: Any] {
       applyCameraPosition(camera)
+    }
+
+    // 可视范围限制（limitMapRect；官方在 frame 未布局完成时通过 KVO
+    // 延迟设置，MVP 先直接设置，平台视图 frame 在 create 时已给出）
+    if let bounds = params["limitBounds"] {
+      applyLimitBounds(bounds)
     }
 
     // 覆盖物初始渲染
@@ -161,16 +171,23 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     bindMapEvents()
   }
 
+  /// Dart MapType.nativeCode（Android 编码 1..5）→ iOS MAMapType（0..4）。
+  private func applyMapTypeCode(_ code: Int) {
+    let raw = code - 1
+    mapView.mapType = MAMapType(rawValue: raw) ?? .standard
+  }
+
   /// 手势开关（创建时与动态更新共用）。
   private func applyGestures(_ json: Any?) {
     guard let gestures = json as? [String: Bool] else { return }
     if let zoom = gestures["zoom"] { mapView.isZoomEnabled = zoom }
     if let scroll = gestures["scroll"] { mapView.isScrollEnabled = scroll }
     if let rotate = gestures["rotate"] { mapView.isRotateEnabled = rotate }
-    // TODO(MVP): 倾斜手势 iOS 属性名待验证
+    // 倾斜手势：iOS SDK 对应属性为 rotateCameraEnabled（官方插件同款用法）
+    if let tilt = gestures["tilt"] { mapView.isRotateCameraEnabled = tilt }
   }
 
-  /// UI 开关类选项（对齐官方 MAMapView 属性名，需 macOS 构建验证）。
+  /// UI 开关类选项（属性名与官方 amap_flutter_map 的 MAMapView+Flutter 一致）。
   private func applyUiOptions(_ json: Any?) {
     guard let options = json as? [String: Any] else { return }
     if let traffic = options["trafficEnabled"] as? Bool {
@@ -193,15 +210,49 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     }
   }
 
+  /// 经纬度 bounds JSON（[[lat,lng],[lat,lng]]）→ MAMapRect。
+  ///
+  /// MAMapPointForCoordinate 输出与缩放无关的世界地图投影点，
+  /// 取两角投影点的包围矩形即为该 bounds 的 map rect。
+  private func mapRect(fromBoundsJson json: Any?) -> MAMapRect? {
+    guard let list = json as? [Any], list.count >= 2,
+      let sw = jsonToLatLng(list[0]), let ne = jsonToLatLng(list[1])
+    else { return nil }
+    let pSW = MAMapPointForCoordinate(sw)
+    let pNE = MAMapPointForCoordinate(ne)
+    let originX = min(pSW.x, pNE.x)
+    let originY = min(pSW.y, pNE.y)
+    let width = abs(pSW.x - pNE.x)
+    let height = abs(pSW.y - pNE.y)
+    return MAMapRectMake(originX, originY, width, height)
+  }
+
+  private func applyLimitBounds(_ json: Any?) {
+    if let rect = mapRect(fromBoundsJson: json) {
+      mapView.limitMapRect = rect
+    } else {
+      // null → 解除限制
+      mapView.limitMapRect = MAMapRectMake(0, 0, 0, 0)
+    }
+  }
+
   private func applyCameraPosition(_ json: [String: Any]) {
     guard let target = jsonToLatLng(json["target"]) else { return }
-    let zoom = (json["zoom"] as? Double) ?? 10
-    let tilt = (json["tilt"] as? Double) ?? 0
-    let bearing = (json["bearing"] as? Double) ?? 0
-    mapView.setCamera(
-      MACameraPosition(
-        target: target, zoom: zoom, tiltDegree: tilt, rotationDegree: bearing),
-      animated: false)
+    var status = currentMapStatus()
+    status.centerCoordinate = target
+    status.zoomLevel = CGFloat((json["zoom"] as? Double) ?? 10)
+    status.cameraDegree = CGFloat((json["tilt"] as? Double) ?? 0)
+    status.rotationDegree = CGFloat((json["bearing"] as? Double) ?? 0)
+    mapView.setMapStatus(status, animated: false, duration: 0)
+  }
+
+  /// 取当前地图状态；getMapStatus 正常情况下非空，兜底用官方指定初始化器构造。
+  private func currentMapStatus() -> MAMapStatus {
+    mapView.getMapStatus()
+      ?? MAMapStatus(
+        centerCoordinate: CLLocationCoordinate2D(latitude: 39.909187, longitude: 116.397451),
+        zoomLevel: 10, rotationDegree: 0, cameraDegree: 0,
+        screenAnchor: CGPoint(x: 0.5, y: 0.5))
   }
 
   private func bindMapEvents() {
@@ -315,59 +366,70 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
   private func handleMapMethod(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "map#moveCamera":
-      // 兼容两种 payload：纯 update（旧版）/ {update, animated, durationMs}
+      // payload: {update, animated, durationMs}
       let args = call.arguments as? [String: Any]
-      guard let update = cameraUpdate(fromPayload: args?["update"] ?? call.arguments)
-      else {
+      guard let update = args?["update"] else {
         result(FlutterError(code: "BAD_ARGS", message: "invalid camera update", details: nil))
         return
       }
       let animated = (args?["animated"] as? Bool) ?? false
-      mapView.setCamera(update, animated: animated)
+      // durationMs（Dart 传 int，毫秒）→ setMapStatus 的 duration（秒）
+      let durationMs =
+        (args?["durationMs"] as? Double)
+        ?? ((args?["durationMs"] as? Int).map { Double($0) })
+        ?? 250
+      applyCameraUpdate(update, animated: animated, duration: durationMs / 1000.0)
       result(nil)
 
     case "map#animateCamera":
       let args = (call.arguments as? [String: Any]) ?? [:]
-      guard let update = cameraUpdate(fromPayload: args["update"]) else {
+      guard let update = args["update"] else {
         result(FlutterError(code: "BAD_ARGS", message: "invalid camera update", details: nil))
         return
       }
-      mapView.setCamera(update, animated: true)
+      let durationMs =
+        (args["durationMs"] as? Double)
+        ?? ((args["durationMs"] as? Int).map { Double($0) })
+        ?? 250
+      applyCameraUpdate(update, animated: true, duration: durationMs / 1000.0)
       result(nil)
 
     case "map#getCameraPosition":
-      let camera = mapView.camera
-      result(camera?.toJsonMap() ?? nil)
+      result(cameraJson())
 
     case "map#getVisibleRegion":
-      let region = mapView.visibleRegion
-      result([region.southwest.toJsonList(), region.northeast.toJsonList()])
+      // map point 坐标系 y 轴向下：南 = origin.y + height，东 = origin.x + width
+      let rect = mapView.visibleMapRect
+      let sw = MACoordinateForMapPoint(
+        MAMapPointMake(rect.origin.x, rect.origin.y + rect.size.height))
+      let ne = MACoordinateForMapPoint(
+        MAMapPointMake(rect.origin.x + rect.size.width, rect.origin.y))
+      result([sw.toJsonList(), ne.toJsonList()])
 
     case "map#getContentApprovalNumber":
-      // iOS：审图号在地图上自动显示（AMapLogo/审图号 label），无需查询
-      result(nil)
+      result(mapView.mapContentApprovalNumber())
 
     case "map#getSatelliteApprovalNumber":
-      result(nil)
+      result(mapView.satelliteImageApprovalNumber())
 
     case "map#setMapType":
       if let typeCode = call.arguments as? Int {
-        mapView.mapType = MAMapType(rawValue: typeCode) ?? .standard
+        applyMapTypeCode(typeCode)
       }
       result(nil)
 
     case "map#setMinMaxZoomPreference":
       let json = call.arguments as? [String: Any] ?? [:]
       if let min = json["min"] as? Double {
-        mapView.setMinZoomLevel(min, maxZoomLevel: json["max"] as? Double)
+        mapView.minZoomLevel = CGFloat(min)
       }
       if let max = json["max"] as? Double {
-        mapView.setMinZoomLevel(json["min"] as? Double, maxZoomLevel: max)
+        mapView.maxZoomLevel = CGFloat(max)
       }
       result(nil)
 
     case "map#setLimitBounds":
-      // TODO(MVP): MAMapView 无直接 LatLngBounds 限制 API，no-op
+      applyLimitBounds(call.arguments)
       result(nil)
 
     case "map#setUiOptions":
@@ -411,57 +473,79 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     }
   }
 
-  private func cameraUpdate(fromPayload payload: Any?) -> MACameraUpdate? {
-    guard let json = payload as? [String: Any] else { return nil }
+  /// 应用相机更新（iOS SDK 无 MACameraUpdate，统一走 MAMapStatus；
+  /// bounds 适配走 setVisibleMapRect:edgePadding:animated:，与官方一致）。
+  private func applyCameraUpdate(_ payload: Any?, animated: Bool, duration: CFTimeInterval) {
+    guard let json = payload as? [String: Any] else { return }
     switch json["op"] as? String {
     case "newLatLng":
-      jsonToLatLng(json["latLng"]).map { MACameraUpdate.setTarget($0) }
+      guard let target = jsonToLatLng(json["latLng"]) else { return }
+      var status = currentMapStatus()
+      status.centerCoordinate = target
+      mapView.setMapStatus(status, animated: animated, duration: duration)
     case "newLatLngZoom":
-      guard let target = jsonToLatLng(json["latLng"]),
-        let zoom = json["zoom"] as? Double
-      else { return nil }
-      return MACameraUpdate.setTargetZoom(target, zoom)
-    case "newLatLngBounds":
-      guard let bounds = jsonToLatLngBounds(json["bounds"]) else { return nil }
-      return MACameraUpdate.fitBounds(bounds, withEdgeInsets: .zero)
+      guard let target = jsonToLatLng(json["latLng"]), let zoom = json["zoom"] as? Double
+      else { return }
+      var status = currentMapStatus()
+      status.centerCoordinate = target
+      status.zoomLevel = CGFloat(zoom)
+      mapView.setMapStatus(status, animated: animated, duration: duration)
     case "newCameraPosition":
       guard let pos = json["cameraPosition"] as? [String: Any],
         let target = jsonToLatLng(pos["target"])
-      else { return nil }
-      return MACameraUpdate.setCameraPosition(
-        MACameraPosition(
-          target: target,
-          zoom: (pos["zoom"] as? Double) ?? 10,
-          tiltDegree: (pos["tilt"] as? Double) ?? 0,
-          rotationDegree: (pos["bearing"] as? Double) ?? 0))
+      else { return }
+      var status = currentMapStatus()
+      status.centerCoordinate = target
+      status.zoomLevel = CGFloat((pos["zoom"] as? Double) ?? 10)
+      status.cameraDegree = CGFloat((pos["tilt"] as? Double) ?? 0)
+      status.rotationDegree = CGFloat((pos["bearing"] as? Double) ?? 0)
+      mapView.setMapStatus(status, animated: animated, duration: duration)
+    case "newLatLngBounds":
+      guard let rect = mapRect(fromBoundsJson: json["bounds"]) else { return }
+      let padding = (json["padding"] as? Double) ?? 0
+      let inset = UIEdgeInsets(top: padding, left: padding, bottom: padding, right: padding)
+      mapView.setVisibleMapRect(rect, edgePadding: inset, animated: animated)
     case "zoomTo":
-      guard let zoom = json["zoom"] as? Double else { return nil }
-      return MACameraUpdate.setZoomZoom(  // zoomTo
-        mapView.camera?.zoom ?? 10, toZoom: zoom)
-    case "zoomIn", "zoomOut":
-      // iOS SDK 无独立 zoomIn/zoomOut，等价 zoomBy(±1)
-      let amount: Double = (json["op"] as? String) == "zoomIn" ? 1 : -1
-      return MACameraUpdate.zoomBy(
-        amount, focus: CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY))
-    case "zoomBy":
-      guard let amount = json["amount"] as? Double else { return nil }
-      return MACameraUpdate.zoomBy(
-        amount, focus: CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY))
-    case "zoomByFocus":
-      guard let amount = json["amount"] as? Double,
-        let focus = json["focus"] as? [Any],
-        let fx = focus.first as? Double,
-        let fy = focus.last as? Double
-      else { return nil }
-      return MACameraUpdate.zoomBy(amount, focus: CGPoint(x: fx, y: fy))
+      guard let zoom = json["zoom"] as? Double else { return }
+      var status = currentMapStatus()
+      status.zoomLevel = CGFloat(zoom)
+      mapView.setMapStatus(status, animated: animated, duration: duration)
+    case "zoomIn", "zoomOut", "zoomBy", "zoomByFocus":
+      // iOS SDK 无 zoomBy(delta)/focus 等价 API，统一按 zoomLevel ± delta 近似
+      // （官方插件对 zoomIn/zoomOut 同样是 zoomLevel ± 1；focus 暂不支持）。
+      let delta: Double
+      switch json["op"] as? String {
+      case "zoomIn": delta = 1
+      case "zoomOut": delta = -1
+      default: delta = (json["amount"] as? Double) ?? 0
+      }
+      var status = currentMapStatus()
+      status.zoomLevel = status.zoomLevel + CGFloat(delta)
+      mapView.setMapStatus(status, animated: animated, duration: duration)
     case "scrollBy":
+      // 与官方一致：屏幕像素偏移 → 中心点经纬度换算（除以屏幕 scale）
       let dx = (json["dx"] as? Double) ?? 0
       let dy = (json["dy"] as? Double) ?? 0
-      return MACameraUpdate.scrollByScreenPoint(
-        CGPoint(x: dx, y: dy))
+      let scale = UIScreen.main.scale
+      var center = mapView.center
+      center.x += CGFloat(dx / scale)
+      center.y += CGFloat(dy / scale)
+      var status = currentMapStatus()
+      status.centerCoordinate = mapView.convertPoint(center, toCoordinateFromView: mapView)
+      mapView.setMapStatus(status, animated: animated, duration: duration)
     default:
-      return nil
+      break
     }
+  }
+
+  /// 当前相机位置 JSON（键与 Dart CameraPosition.fromJson 约定一致）。
+  private func cameraJson() -> [String: Any] {
+    [
+      "target": [mapView.centerCoordinate.latitude, mapView.centerCoordinate.longitude],
+      "zoom": mapView.zoomLevel,
+      "tilt": mapView.cameraDegree,
+      "bearing": mapView.rotationDegree,
+    ]
   }
 
   // ---- 生命周期 ----
@@ -501,14 +585,6 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     return list.compactMap(jsonToLatLng)
   }
 
-  private func jsonToLatLngBounds(_ json: Any?) -> MABoundingRect? {
-    guard let list = json as? [Any], list.count >= 2,
-      let sw = jsonToLatLng(list[0]), let ne = jsonToLatLng(list[1])
-    else { return nil }
-    return MABoundingRect(
-      southWest: sw, northEast: ne)
-  }
-
   private func color(_ json: Any?, fallback: UIColor) -> UIColor {
     guard let argb = json as? Int else { return fallback }
     return UIColor(
@@ -523,18 +599,18 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
 
 extension AMapPlatformView: MAMapViewDelegate {
   public func mapView(_ mapView: MAMapView, regionDidChangeAnimated animated: Bool) {
-    if let camera = mapView.camera {
-      notifyDart("cameraMoveEnd", camera.toJsonMap())
-    }
+    notifyDart("cameraMoveEnd", cameraJson())
   }
 
-  public func mapView(_ mapView: MAMapView, regionWillChangeAnimated animated: Bool) {
-    if let camera = mapView.camera {
-      notifyDart("cameraMove", camera.toJsonMap())
-    }
+  /// 地图区域变化过程中持续回调（官方用 mapViewRegionChanged 上报 camera#onMove）
+  public func mapViewRegionChanged(_ mapView: MAMapView) {
+    notifyDart("cameraMove", cameraJson())
   }
 
-  public func mapView(_ mapView: MAMapView, didTapMap coordinate: CLLocationCoordinate2D) {
+  /// 单击地图（官方委托方法名为 didSingleTappedAtCoordinate）
+  public func mapView(
+    _ mapView: MAMapView, didSingleTappedAtCoordinate coordinate: CLLocationCoordinate2D
+  ) {
     notifyDart("mapTap", [coordinate.latitude, coordinate.longitude])
   }
 
@@ -554,40 +630,58 @@ extension AMapPlatformView: MAMapViewDelegate {
   public func mapView(_ mapView: MAMapView, viewFor annotation: MAAnnotation) -> MAAnnotationView? {
     guard let marker = annotation as? QsMarker else { return nil }
     let image = qsImage(from: marker.json["icon"])
+    // 与官方一致使用共享复用标识，复用后逐项重设属性
+    let reuseId = "qs_marker_annotation"
     let view: MAAnnotationView
-    if let reused = mapView.dequeueReusableAnnotationView(withIdentifier: marker.customId) {
+    if let reused = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) {
       view = reused
     } else if image != nil {
-      view = MAAnnotationView(annotation: marker, reuseIdentifier: marker.customId)
+      view = MAAnnotationView(annotation: marker, reuseIdentifier: reuseId)
     } else {
       // 无自定义图标时使用 SDK 自带大头针
-      view = MAPinAnnotationView(annotation: marker, reuseIdentifier: marker.customId)
+      view = MAPinAnnotationView(annotation: marker, reuseIdentifier: reuseId)
     }
     view.annotation = marker
     view.image = image
+    view.isEnabled = (marker.json["clickable"] as? Bool) ?? true
+    view.isDraggable = (marker.json["draggable"] as? Bool) ?? false
+    view.isHidden = !((marker.json["visible"] as? Bool) ?? true)
+    // alpha / zIndex：MAAnnotationView 直接属性（官方插件在用）
+    if let alpha = marker.json["alpha"] as? Double {
+      view.alpha = CGFloat(alpha)
+    }
+    if let zIndex = marker.json["zIndex"] as? Double {
+      view.zIndex = Int(zIndex)
+    }
+    // rotation：iOS 无 rotation 属性，官方用 imageView 旋转变换实现
+    if let rotation = marker.json["rotation"] as? Double {
+      view.imageView.transform = CGAffineTransform(
+        rotationAngle: CGFloat(rotation) / 180.0 * .pi)
+    }
+
     let infoWindow = marker.json["infoWindow"] as? [String: Any]
     // infoWindowEnable=false 时禁用气泡（对齐 Android 行为）
     let infoWindowEnabled = (marker.json["infoWindowEnable"] as? Bool) ?? true
-    // 自定义气泡：Widget 截图替换整个 callout（命名需 macOS 构建验证）
+    // 自定义气泡：Widget 截图替换整个 callout
     if let calloutImage = qsImage(from: infoWindow?["content"]) {
       view.canShowCallout = infoWindowEnabled
       let imageView = UIImageView(image: calloutImage)
-      view.customCalloutView = MACustomCalloutView(customViews: [imageView])
+      // 官方初始化器为 initWithCustomView:（单数，自 SDK 5.0.0）
+      view.customCalloutView = MACustomCalloutView(customView: imageView)
     } else {
       view.canShowCallout =
         infoWindowEnabled && !(infoWindow?.isEmpty ?? false)
     }
-    view.isDraggable = (marker.json["draggable"] as? Bool) ?? false
-    view.isHidden = !((marker.json["visible"] as? Bool) ?? true)
 
-    // 锚点：Dart 约定 (0,0) 左上 (1,1) 右下；iOS 用 centerOffset 换算
+    // 锚点：Dart 约定 (0,0) 左上 (1,1) 右下；iOS annotationView 中心默认位于
+    // 坐标点（等价锚点 0.5,0.5），官方换算为 offset = size * (0.5 - anchor)
     let anchor = marker.json["anchor"] as? [Double]
     let u = (anchor?.count ?? 0) > 0 ? anchor![0] : 0.5
     let v = (anchor?.count ?? 0) > 1 ? anchor![1] : 1.0
     let width = image?.size.width ?? view.frame.width
     let height = image?.size.height ?? view.frame.height
-    view.centerOffset = CGPoint(x: (u - 0.5) * width, y: (v - 0.5) * height)
-    // TODO(MVP): alpha / rotation / zIndex 的 iOS 对应（MAAnnotationView 无直接属性，后续版本支持）
+    view.centerOffset = CGPoint(x: width * (0.5 - u), y: height * (0.5 - v))
+    // flat：官方暂不在 iOS 开放，跳过
     return view
   }
 
@@ -621,11 +715,19 @@ extension AMapPlatformView: MAMapViewDelegate {
     case let polyline as QsPolyline:
       let renderer = MAPolylineRenderer(polyline: polyline)
       renderer.lineWidth = (polyline.json["width"] as? CGFloat) ?? 10
-      renderer.strokeColor = color(
+      let stroke = color(
         polyline.json["color"], fallback: UIColor(red: 0, green: 0, blue: 1, alpha: 0.8))
-      // 虚线：仅区分 none / dash（capType / joinType 为 Android 专属属性，iOS 用 SDK 默认值）
-      renderer.lineDashType =
-        (polyline.json["dashLineType"] as? String) == "dash" ? .dash : .none
+      // Dart 侧独立的 alpha 字段与颜色 ARGB 相乘
+      let alpha = (polyline.json["alpha"] as? Double) ?? 1
+      renderer.strokeColor =
+        alpha >= 1 ? stroke : stroke.withAlphaComponent(CGFloat(alpha) * stroke.cgColor.alpha)
+      // 虚线：MALineDashType 只有 none / square / dot
+      // （无 .dash；dash/dashDot → square，dot → dot，capType/joinType 为 Android 专属）
+      switch polyline.json["dashLineType"] as? String {
+      case "dash", "dashDot": renderer.lineDashType = .square
+      case "dot": renderer.lineDashType = .dot
+      default: renderer.lineDashType = .none
+      }
       return renderer
     case let polygon as QsPolygon:
       let renderer = MAPolygonRenderer(polygon: polygon)
@@ -652,17 +754,6 @@ extension AMapPlatformView: MAMapViewDelegate {
 }
 
 // MARK: - 序列化辅助
-
-extension MACameraPosition {
-  func toJsonMap() -> [String: Any?] {
-    [
-      "target": [target.latitude, target.longitude],
-      "zoom": zoom,
-      "tilt": tiltDegree,
-      "bearing": rotationDegree,
-    ]
-  }
-}
 
 extension CLLocationCoordinate2D {
   func toJsonList() -> [Double] {
