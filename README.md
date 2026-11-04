@@ -172,6 +172,15 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 从官方 `amap_flutter_map` 迁移指南见
 [MIGRATION.md](https://github.com/Sowaters/amap_maps_flutter_qs/blob/master/MIGRATION.md)。
 
+运行 example 需自带 Key（经 `--dart-define` 注入，仓库不含真实凭据）：
+
+```bash
+cd example
+flutter run \
+  --dart-define=AMAP_ANDROID_KEY=<你的AndroidKey> \
+  --dart-define=AMAP_IOS_KEY=<你的iOSKey>
+```
+
 ## 平台差异
 
 | 能力 | Android | iOS |
