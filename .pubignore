@@ -1,0 +1,3 @@
+# 不随发布包上传（git 仓库保留）
+# 仅在 pub.dev 包页面通过 README 中的 GitHub 绝对链接访问
+MIGRATION.md

@@ -34,7 +34,7 @@
 - ✅ 地图截图 `takeSnapshot`、可视区域查询 `getVisibleRegion`、审图号查询（普通 / 卫星）
 
 > API 形状与官方 `amap_flutter_map` 3.0.0 对齐，从官方迁移见
-> [MIGRATION.md](MIGRATION.md)。
+> [MIGRATION.md](https://github.com/Sowaters/amap_maps_flutter_qs/blob/master/MIGRATION.md)。
 
 ## 平台要求
 
@@ -157,7 +157,8 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 
 完整示例见 [example/](example/)（多页 demo：地图配置 / 覆盖物管理 / 相机控制 /
 几何运算 / 事件日志 / 定位蓝点 / 截图与审图号 / 自定义气泡 / 自定义地图样式）；
-从官方 `amap_flutter_map` 迁移指南见 [MIGRATION.md](MIGRATION.md)。
+从官方 `amap_flutter_map` 迁移指南见
+[MIGRATION.md](https://github.com/Sowaters/amap_maps_flutter_qs/blob/master/MIGRATION.md)。
 
 ## 平台差异
 
