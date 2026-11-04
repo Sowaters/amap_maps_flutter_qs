@@ -46,6 +46,9 @@ android {
 
     defaultConfig {
         minSdk = 24
+        // 随 AAR 传递给使用者的 proguard 规则（见 consumer-rules.pro）：
+        // 高德合包 SDK 引用可选 GNSS 模块，release 开启 R8 时避免 Missing class 报错
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     testOptions {
