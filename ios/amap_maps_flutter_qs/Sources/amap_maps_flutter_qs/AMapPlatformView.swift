@@ -256,7 +256,27 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     self.viewId = viewId
     mapId = Int(viewId)
     self.messenger = messenger
-    mapView = MAMapView(frame: frame)
+    // MAMapView.init 未标注可空性（Swift 按隐式解包导入），SDK 失败时实际会
+    // 返回 nil——直接赋给非可选属性会在后续桥接（如 KVO）处触发难以定位的
+    // "Non-Optional values are not allowed to hold null pointers" SIGABRT。
+    // 此处立即判 nil 并给出明确诊断（fail-fast）。
+    let created = MAMapView(frame: frame)
+    if created == nil {
+      AMapLog.d(
+        "map#\(viewId) MAMapView 初始化返回 nil！最常见原因："
+          + "①隐私合规未通过（须在创建任何 MAMapView 前调用 updatePrivacyShow/"
+          + "updatePrivacyAgree 且状态为 didShow/didContain/didAgree）；"
+          + "②APIKey 未注入（iOS 未配置有效 Key 时部分 SDK 版本会创建失败）。"
+          + "请检查 Xcode 控制台高德 SDK 的原始报错。")
+      fatalError(
+        """
+        amap_maps_flutter_qs: MAMapView init returned nil (frame=\(frame)).
+        最常见原因：隐私合规未完成，或 iOS APIKey 未注入（示例工程请以 \
+        --dart-define=AMAP_IOS_KEY=<你的Key> 传入）。详见 Xcode 控制台高德 SDK 输出。
+        """)
+    }
+    mapView = created
+
     // 通道在 create 时即按 viewId 绑定（viewId 引擎已分配，两端确定一致），
     // 此刻起原生 handler 就绪 —— 后续 Dart 的所有调用都不会再
     // MissingPluginException，即使 creationParams 尚未送达。

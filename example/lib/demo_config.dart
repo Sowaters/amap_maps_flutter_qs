@@ -1,17 +1,29 @@
 import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 
-/// ⚠️ 请替换为你自己的高德 Key（在 [高德开放平台](https://console.amap.com) 申请）：
-/// - AndroidKey：按「包名 + 签名 SHA1」申请
-/// - iOSKey：按 BundleID 申请
+/// ⚠️ Key 不入库（避免泄漏到 pub.dev），运行时经 --dart-define 注入：
+///
+/// ```bash
+/// flutter run \
+///   --dart-define=AMAP_ANDROID_KEY=<你的AndroidKey> \
+///   --dart-define=AMAP_IOS_KEY=<你的iOSKey>
+/// ```
+///
+/// Key 在[高德开放平台](https://console.amap.com)申请：
+/// - AndroidKey：按「包名 + 签名 SHA1」
+/// - iOSKey：按 BundleID
 ///
 /// 也可以不在这里传 key，改为 AndroidManifest meta-data /
 /// iOS Info.plist 配置（见插件 README）。
 ///
-/// 注意：不填有效 Key 时地图仍可渲染，但部分能力（定位等）受限；
+/// 注意：不注入有效 Key 时地图渲染受限（iOS 端部分 SDK 版本
+/// MAMapView 会创建失败，Android 端定位/检索等功能不可用）；
 /// 正式使用必须在用户同意隐私政策后传入真实合规状态。
+const _androidKey = String.fromEnvironment('AMAP_ANDROID_KEY');
+const _iosKey = String.fromEnvironment('AMAP_IOS_KEY');
+
 const demoApiKey = AMapApiKey(
-  androidKey: 'YOUR_ANDROID_KEY',
-  iosKey: 'YOUR_IOS_KEY',
+  androidKey: _androidKey,
+  iosKey: _iosKey,
 );
 
 /// ⚠️ 隐私合规：˚
