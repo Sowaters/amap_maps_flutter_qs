@@ -1,3 +1,7 @@
 # 不随发布包上传（git 仓库保留）
 # 仅在 pub.dev 包页面通过 README 中的 GitHub 绝对链接访问
 MIGRATION.md
+
+# Flutter 构建缓存（test_cache 的 dill 达 46MB，pub 不完全遵循 gitignore，需显式排除）
+build/
+.dart_tool/
