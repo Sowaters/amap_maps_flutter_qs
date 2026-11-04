@@ -374,7 +374,7 @@ class _HomeHeader extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _buildBadge('v0.0.1'),
+              _buildBadge('v0.1.0'),
               _buildBadge('$_entryCount 个示例'),
               _buildBadge('iOS · Android'),
             ],
