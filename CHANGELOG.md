@@ -1,3 +1,11 @@
+## 0.1.2
+
+### 文档
+
+- README iOS 章节新增「SwiftPM 说明」：插件暂不支持 SwiftPM 的原因
+  （`AMap3DMap` 仅 CocoaPods trunk 分发）、开启 SwiftPM 集成时的
+  CocoaPods 自动回退行为与影响
+
 ## 0.1.1
 
 ### 文档
