@@ -180,6 +180,18 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 - 隐私合规方案：<https://lbs.amap.com/news/sdkhgsy>
 - 本插件为社区插件，与高德官方无隶属关系
 
+## 第三方组件声明
+
+- 本插件为独立开发的社区作品，与高德官方无隶属关系，亦未使用高德官方
+  `amap_flutter_map` 的源码（仅 API 形状对齐以方便迁移）。
+- Android 端随包分发了高德官方 SDK 离线包（`AMap3DMap 11.3.100` /
+  `AMapSearch 9.8.1` / `AMapLocation 11.3.101` 的 jar 与 so）。该 SDK 的著作权
+  归属高德软件（AutoNavi / AMap），其获取与使用须遵守
+  [高德开放平台服务协议](https://lbs.amap.com/home/terms/)；iOS 端则通过
+  CocoaPods 官方渠道（trunk）分发，不在本包内携带。
+- 使用本插件即表示您已按高德要求注册开发者账号、申请合法 Key，并在 App 内
+  落地隐私合规（弹窗展示与用户同意）。
+
 ## Roadmap
 
 - [x] M0：地图渲染 + 相机 + 事件
