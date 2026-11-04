@@ -171,14 +171,6 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 
 其余特性（覆盖物 / 事件 / 相机 / 手势 / UI 开关 / `limitBounds` / 审图号等）双端一致。
 
-### iOS 26 渲染说明
-
-早前观察到的 iOS 26「整屏蓝屏/海面」现象，经排查**根因在插件自身**：对 SDK
-`limitMapRect` 属性传入了零矩形（其语义为「可见区域矩形边界」，零矩形会钳制到
-世界原点并触发强制 zoom 适配）。该问题已在 `0.0.1` 修复：建图时未显式下发
-`limitBounds` 不再触碰该属性，显式解除时以全世界矩形恢复（10.1.600 / 11.3.100
-双版本真机验证）。
-
 ## 合规注意
 
 - 地图页面需展示**审图号**：`controller.getMapContentApprovalNumber()`（普通地图）、
@@ -192,8 +184,7 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 - [x] M0：地图渲染 + 相机 + 事件
 - [x] MVP（0.0.1）：覆盖物差量更新、事件全量、手势/UI 开关动态更新、
   自定义气泡、几何运算 XOR、`limitBounds`、`zoomByFocus`（当前）
-- [x] iOS 平台差异补齐：takeSnapshot / poiTap / infoWindowTap / 蓝点样式 / 自定义地图样式、
-  iOS 26 渲染错位 workaround（见[平台差异](#平台差异)）
+- [x] iOS 平台差异补齐：takeSnapshot / poiTap / infoWindowTap / 蓝点样式 / 自定义地图样式
 - [ ] v1.1：Marker `rotation` / `zIndex` 的 iOS 对接、AMapUtil 扩展
 - [ ] v2.0：独立服务插件（搜索 / 地理编码）
 
