@@ -1,3 +1,14 @@
+## 0.1.3
+
+### 修复
+
+- **Android release 构建开启 R8（minify）不再失败**：高德合包 SDK 在
+  mavenCentral 以纯 JAR 分发，无法自带 consumer proguard 规则，R8 会因
+  引用可选 GNSS 模块（`com.amap.ams.gnss.*`）报 Missing class。
+  插件现内置 `consumerProguardFiles`（dontwarn + keep `com.amap.**` /
+  `com.autonavi.**`），使用者**无需再自行配置任何 proguard 规则**
+- example 常驻开启 R8 作为回归验证
+
 ## 0.1.2
 
 ### 文档
