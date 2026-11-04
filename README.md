@@ -7,6 +7,10 @@
 本插件是其现代继任者：单包架构（Dart + Android Kotlin + iOS Swift），
 API 形状对齐 `google_maps_flutter` 与官方插件，便于平滑迁移。
 
+| Demo 首页 | 自定义气泡（Widget 快照） |
+| --- | --- |
+| ![Demo 首页](screenshots/demo_home.png) | ![自定义气泡](screenshots/custom_bubble.jpg) |
+
 ## 特性
 
 - **一站式初始化**：`AMapInitializer.init` 同时完成 ApiKey 注入与隐私合规同步
