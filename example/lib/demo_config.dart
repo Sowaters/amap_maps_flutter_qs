@@ -21,10 +21,7 @@ import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 const _androidKey = String.fromEnvironment('AMAP_ANDROID_KEY');
 const _iosKey = String.fromEnvironment('AMAP_IOS_KEY');
 
-const demoApiKey = AMapApiKey(
-  androidKey: _androidKey,
-  iosKey: _iosKey,
-);
+const demoApiKey = AMapApiKey(androidKey: _androidKey, iosKey: _iosKey);
 
 /// ⚠️ 隐私合规：˚
 /// 真实 App 中必须先展示隐私弹窗，用户同意后将状态同步给 SDK。
