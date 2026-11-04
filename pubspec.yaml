@@ -7,7 +7,7 @@ version: 0.1.0
 homepage: https://github.com/Sowaters/amap_maps_flutter_qs
 repository: https://github.com/Sowaters/amap_maps_flutter_qs
 issue_tracker: https://github.com/Sowaters/amap_maps_flutter_qs/issues
-topics: [map, amap, gaode, maps, china, amap-maps]
+topics: [map, amap, gaode, china, maps]
 
 environment:
   sdk: ^3.12.2
