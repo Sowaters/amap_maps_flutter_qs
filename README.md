@@ -141,6 +141,95 @@ class _MapPageState extends State<MapPage> {
 插件通过 CocoaPods 自动引入 `AMap3DMap ~> 11.2`，Key 经
 `AMapInitializer.init` 注入，无需额外配置。最低部署版本 iOS 13.0。
 
+#### ⚠️ Podfile 必须移除 use_frameworks!
+
+高德 `AMap3DMap` 以**静态 framework** 分发，而 `use_frameworks!` 会把所有
+Pod 打成动态 framework——静态库无法链入动态 framework，`pod install` 会失败，
+且报错信息通常不指向真正的原因行，非常难排查。
+
+Flutter 新建工程的 `ios/Podfile` 模板中若存在（或被取消注释）如下一行，
+**必须删除或重新注释掉**：
+
+```ruby
+use_frameworks!   # ← 删除此行，与高德静态 SDK 冲突
+```
+
+同时确保部署平台不低于插件要求：
+
+```ruby
+platform :ios, '13.0'
+```
+
+无需担心其余依赖：Flutter 官方插件（如 shared_preferences 等）均兼容静态
+链接方式，移除 `use_frameworks!` 不影响它们。
+
+正确的 iOS Podfile 关键部分示例：
+
+```ruby
+platform :ios, '13.0'
+
+# 注意：不要写 use_frameworks!
+
+target 'Runner' do
+  use_frameworks! :linkage => :static   # 可选：如确有依赖需要 frameworks，
+                                        # 用静态链接形式，兼容高德 SDK
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+
+> 如果项目确有其他依赖强制要求 `use_frameworks!`，可改用
+> `use_frameworks! :linkage => :static`（静态链接的 frameworks），
+> 同样兼容高德静态 SDK。
+
+## 权限说明
+
+不同能力所需的原生权限不同，按需声明即可：
+
+| 能力 | Android 权限 | iOS 声明 |
+| --- | --- | --- |
+| 地图显示（基础） | `INTERNET` | 无需额外声明 |
+| 定位蓝点 | `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION` + **运行时授权** | `NSLocationWhenInUseUsageDescription` + **运行时授权** |
+
+### Android
+
+在 `android/app/src/main/AndroidManifest.xml` 中声明：
+
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<!-- 以下两项仅定位蓝点需要 -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+```
+
+定位权限是危险权限，**必须在代码里动态请求**，仅声明 Manifest 不会弹授权框。
+可借助 [`permission_handler`](https://pub.dev/packages/permission_handler)：
+
+```dart
+final status = await Permission.locationWhenInUse.request();
+if (status.isGranted) {
+  // 已授权，可开启 myLocationEnabled
+}
+```
+
+> 注意：发布 release 包时 `INTERNET` 权限常被 debug 清单自动合并，
+> 但 release 环境必须自己声明，否则地图瓦片无法加载。
+
+### iOS
+
+在 `ios/Runner/Info.plist` 中声明用途描述（文案请按实际业务填写，
+App Store 审核会检查是否描述合理）：
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>用于在地图上显示您的当前位置</string>
+```
+
+同样需要在代码中动态请求（`CLLocationManager` 或 `permission_handler`），
+首次调用定位相关能力时系统会弹出授权框。
+
+> 插件自身不申请任何权限，也不会在未授权时崩溃——未授权时定位蓝点
+> 相关功能静默降级。
+
 ## 常用能力
 
 ### 相机控制
@@ -203,7 +292,7 @@ AMapWidget(
 )
 ```
 
-> 需先在原生层取得定位权限（Android 运行时权限、iOS `NSLocationWhenInUseUsageDescription`）。
+> 需先取得定位权限并完成运行时授权，详见上文「[权限说明](#权限说明)」。
 
 ### 截图与审图号
 

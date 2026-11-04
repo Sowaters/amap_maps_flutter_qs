@@ -3,7 +3,7 @@ description: >-
   AMap (Gaode / 高德地图) 3D map plugin for Flutter. A modern, maintained
   successor of the abandoned `amap_flutter_map`, with Dart 3 sealed-class
   overlays, stream-based events and full privacy-compliance APIs.
-version: 0.1.0
+version: 0.1.1
 homepage: https://github.com/Sowaters/amap_maps_flutter_qs
 repository: https://github.com/Sowaters/amap_maps_flutter_qs
 issue_tracker: https://github.com/Sowaters/amap_maps_flutter_qs/issues

@@ -1,3 +1,16 @@
+## 0.1.1
+
+### 文档
+
+- README iOS 章节补充 Podfile 要求：高德 `AMap3DMap` 为静态 framework，
+  宿主 Podfile 含 `use_frameworks!`（Flutter 新模板可能默认启用）会导致
+  `pod install` 失败且报错难定位，需移除该行并确保
+  `platform :ios, '13.0'`；确有依赖需要 frameworks 时改用
+  `use_frameworks! :linkage => :static`
+- README 新增「权限说明」章节：双端权限矩阵（地图显示 / 定位蓝点）、
+  Android Manifest 声明与运行时授权（permission_handler 示例）、
+  iOS `Info.plist` 用途描述声明
+
 ## 0.1.0
 
 首个发布版本。单包架构（Dart 层 + Android Kotlin + iOS Swift），API 形状与官方
