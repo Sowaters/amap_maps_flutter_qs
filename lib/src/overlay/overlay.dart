@@ -129,12 +129,20 @@ class BitmapDescriptor {
   /// 色相角度 [0, 360)（defaultMarkerWithHue）。
   final double? _hue;
 
+  /// 目标尺寸（逻辑点，可选）。仅 asset 类型生效：
+  /// 指定后原生端把图片缩放到该尺寸再用于渲染；
+  /// 只给 [fromIconPath.width] 时高度按原图宽高比推导，反之亦然。
+  final double? _width;
+  final double? _height;
+
   const BitmapDescriptor._(
     this._type,
     this._asset,
     this._scale,
     this._bytes,
     this._hue,
+    this._width,
+    this._height,
   );
 
   /// 红色。
@@ -174,6 +182,8 @@ class BitmapDescriptor {
     null,
     null,
     null,
+    null,
+    null,
   );
 
   /// 旧版默认图标别名（保留兼容，建议改用 [defaultMarker]）。
@@ -189,6 +199,8 @@ class BitmapDescriptor {
       null,
       null,
       hue,
+      null,
+      null,
     );
   }
 
@@ -197,8 +209,24 @@ class BitmapDescriptor {
   /// 路径为 Flutter asset 路径，如 `assets/location_marker.png`；
   /// 使用插件自带资源时需带包前缀
   /// （如 `packages/amap_maps_flutter_qs/res/marker.png`）。
-  static BitmapDescriptor fromIconPath(String iconPath) =>
-      BitmapDescriptor._(_BitmapType.asset, iconPath, null, null, null);
+  ///
+  /// [width] / [height]：目标尺寸（逻辑点，可选）。只给其一时另一边按原图
+  /// 宽高比推导；都不给时按图片原始像素尺寸渲染（默认行为）。
+  /// 原生端缩放（Android 按 dp→px，iOS 按 pt），与地图其他元素视觉一致。
+  static BitmapDescriptor fromIconPath(
+    String iconPath, {
+    double? width,
+    double? height,
+  }) =>
+      BitmapDescriptor._(
+        _BitmapType.asset,
+        iconPath,
+        null,
+        null,
+        null,
+        width,
+        height,
+      );
 
   /// 从资源图像创建（会根据 [ImageConfiguration] 做分辨率感知解析）。
   ///
@@ -218,12 +246,29 @@ class BitmapDescriptor {
       key.scale,
       null,
       null,
+      null,
+      null,
     );
   }
 
-  /// 从内存 PNG 字节创建（配合 `renderWidgetToPng` 渲染 Widget 快照）。
-  static BitmapDescriptor fromBytes(Uint8List bytes) =>
-      BitmapDescriptor._(_BitmapType.bytes, null, null, bytes, null);
+  /// 从内存 PNG 字节创建（配合 [renderWidgetToPng] 渲染 Widget 快照）。
+  ///
+  /// [width] / [height]：目标逻辑尺寸（可选，建议传 [renderWidgetToPng]
+  /// 返回的快照尺寸）。不传时 iOS 按屏幕像素比解释 PNG 像素（与 Android
+  /// 的 px→dp 视觉一致）；显式指定可跨设备精确一致。
+  static BitmapDescriptor fromBytes(
+    Uint8List bytes, {
+    double? width,
+    double? height,
+  }) => BitmapDescriptor._(
+    _BitmapType.bytes,
+    null,
+    null,
+    bytes,
+    null,
+    width,
+    height,
+  );
 
   /// 旧版资源图标别名（保留兼容，建议改用 [fromIconPath]）。
   @Deprecated('Use fromIconPath instead')
@@ -236,6 +281,8 @@ class BitmapDescriptor {
     'scale': _scale,
     'bytes': _bytes,
     'hue': _hue,
+    'width': _width,
+    'height': _height,
   };
 
   /// 值相等：相同类型 + 相同参数即相等。
@@ -252,6 +299,8 @@ class BitmapDescriptor {
           other._asset == _asset &&
           other._scale == _scale &&
           other._hue == _hue &&
+          other._width == _width &&
+          other._height == _height &&
           _listEquals(other._bytes, _bytes);
 
   /// O(1) 哈希：不参与 bytes 内容哈希（大图标逐字节哈希会让 2000 级
@@ -261,7 +310,7 @@ class BitmapDescriptor {
   /// 与 [==] 保持一致性约束（相等必同哈希）。Marker 的 `==` 先比较 id /
   /// position 等廉价字段，哈希碰撞不会引发位图逐字节比较。
   @override
-  int get hashCode => Object.hash(_type, _asset, _scale, _hue);
+  int get hashCode => Object.hash(_type, _asset, _scale, _hue, _width, _height);
 
   static bool _listEquals(Uint8List? a, Uint8List? b) {
     if (identical(a, b)) return true;

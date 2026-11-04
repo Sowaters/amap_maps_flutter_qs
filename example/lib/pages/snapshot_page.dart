@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
@@ -25,16 +27,32 @@ class _SnapshotPageState extends State<SnapshotPage> {
     final bytes = await controller.takeSnapshot();
     if (!mounted) return;
     if (bytes == null) {
-      showDemoTip(context, '当前平台暂不支持 takeSnapshot（iOS 后续版本）');
+      showDemoTip(context, '当前平台暂不支持 takeSnapshot');
       return;
     }
+    // 解码取尺寸（仅 UI 展示用，解码失败不影响预览）
+    final size = await decodeImageSize(bytes);
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('地图截图'),
-        content: InteractiveViewer(
-          maxScale: 4,
-          child: Image.memory(bytes, fit: BoxFit.contain),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: InteractiveViewer(
+                maxScale: 4,
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'PNG ${bytes.lengthInBytes ~/ 1024} KB'
+              '${size != null ? ' · ${size.width.toInt()}×${size.height.toInt()} px' : ''}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -44,6 +62,19 @@ class _SnapshotPageState extends State<SnapshotPage> {
         ],
       ),
     );
+  }
+
+  /// 解码 PNG 头部取尺寸（dart:ui 解码整图开销大，这里只解析 IHDR）。
+  static Future<Size?> decodeImageSize(Uint8List png) async {
+    if (png.length < 24) return null;
+    // PNG 签名 8 字节 + IHDR 长度/类型 8 字节 + 宽高 8 字节
+    final bd = ByteData.sublistView(png);
+    final width = bd.getUint32(16);
+    final height = bd.getUint32(20);
+    if (width == 0 || height == 0 || width > 100000 || height > 100000) {
+      return null;
+    }
+    return Size(width.toDouble(), height.toDouble());
   }
 
   Future<void> _loadApprovalNumbers() async {

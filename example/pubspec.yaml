@@ -58,6 +58,9 @@ flutter:
     - assets/marker_asset.png
     - assets/texture_line.png
     - assets/texture_green.png
+    - assets/user.png
+    - assets/fence.png
+    - assets/styles/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

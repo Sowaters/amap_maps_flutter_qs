@@ -17,6 +17,7 @@ export 'src/model/camera_update.dart';
 export 'src/model/custom_style_options.dart';
 export 'src/model/latlng.dart';
 export 'src/model/latlng_bounds.dart';
+export 'src/model/map_language.dart';
 export 'src/model/map_type.dart';
 export 'src/model/min_max_zoom_preference.dart';
 export 'src/model/my_location_style_options.dart';

@@ -10,13 +10,14 @@ Pod::Spec.new do |s|
 A modern, maintained AMap 3D map plugin for Flutter.
 Successor of the abandoned amap_flutter_map.
                        DESC
-  s.homepage         = 'https://github.com/qs-labs/amap_maps_flutter_qs'
+  s.homepage         = 'https://github.com/Sowaters/amap_maps_flutter_qs'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'qs-labs' => 'TODO@example.com' }
+  s.author           = { 'Sowaters' => 'Sowaters@users.noreply.github.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'amap_maps_flutter_qs/Sources/amap_maps_flutter_qs/**/*'
   s.dependency 'Flutter'
-  s.dependency 'AMap3DMap'  # 发布前锁定版本，如 '~> 10.0'
+  # 对齐 11.x 版本线；trunk 最高 11.2.100（蓝屏根因在插件侧已修复，SDK 版本无碍）
+  s.dependency 'AMap3DMap', '~> 11.2'
   s.platform = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.

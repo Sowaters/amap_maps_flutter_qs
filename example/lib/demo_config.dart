@@ -1,17 +1,20 @@
 import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 
-/// ⚠️ 请替换为你自己的高德 Key（在高德开放平台申请）：
+/// ⚠️ 请替换为你自己的高德 Key（在 [高德开放平台](https://console.amap.com) 申请）：
 /// - AndroidKey：按「包名 + 签名 SHA1」申请
 /// - iOSKey：按 BundleID 申请
 ///
 /// 也可以不在这里传 key，改为 AndroidManifest meta-data /
 /// iOS Info.plist 配置（见插件 README）。
+///
+/// 注意：不填有效 Key 时地图仍可渲染，但部分能力（定位等）受限；
+/// 正式使用必须在用户同意隐私政策后传入真实合规状态。
 const demoApiKey = AMapApiKey(
   androidKey: 'YOUR_ANDROID_KEY',
-  iosKey: '44d699653f9f0b3f4b90ee4b15e9f6ca',
+  iosKey: 'YOUR_IOS_KEY',
 );
 
-/// ⚠️ 隐私合规：
+/// ⚠️ 隐私合规：˚
 /// 真实 App 中必须先展示隐私弹窗，用户同意后将状态同步给 SDK。
 /// Demo 为演示方便直接声明「已同意」，勿照抄。
 const demoPrivacy = AMapPrivacyStatement(

@@ -32,3 +32,6 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# 高德 iOS SDK 本地 vendored 副本（开发调试用，336MB，不进发布包）
+AMapSDK/

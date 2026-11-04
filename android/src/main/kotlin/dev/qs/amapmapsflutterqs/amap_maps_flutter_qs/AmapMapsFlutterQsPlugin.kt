@@ -72,27 +72,38 @@ class AmapMapsFlutterQsPlugin :
 
     private fun initialize(apiKey: Map<*, *>?, privacy: Map<*, *>?) {
         // Android Key：Dart 侧传入时程序化注入；也可走 Manifest meta-data。
+        // 占位符（如 demo 未填的 "YOUR_ANDROID_KEY"）不下发，避免覆盖 Manifest 里的真实 key。
         val androidKey = apiKey?.get("androidKey") as? String
-        if (!androidKey.isNullOrBlank()) {
+        if (!androidKey.isNullOrBlank() && !androidKey.startsWith("YOUR_")) {
             com.amap.api.maps.MapsInitializer.setApiKey(androidKey)
         }
-        // 隐私合规：必须在任何 MapView 创建前调用。
+        // 隐私合规：必须在任何 MapView / 定位 / 搜索调用前完成，
+        // 地图、定位、搜索三个 SDK 各自独立调用（高德合规要求）。
         val hasShow = privacy?.get("hasShow") as? Boolean ?: false
         val hasContains = privacy?.get("hasContains") as? Boolean ?: false
         val hasAgree = privacy?.get("hasAgree") as? Boolean ?: false
-        com.amap.api.maps.MapsInitializer.updatePrivacyShow(context, hasShow, hasContains)
-        com.amap.api.maps.MapsInitializer.updatePrivacyAgree(context, hasAgree)
+        applyPrivacyShow(hasShow, hasContains)
+        applyPrivacyAgree(hasAgree)
     }
 
     private fun applyPrivacyShow(hasShow: Boolean, hasContains: Boolean) {
         com.amap.api.maps.MapsInitializer.updatePrivacyShow(context, hasShow, hasContains)
+        com.amap.api.location.AMapLocationClient.updatePrivacyShow(context, hasShow, hasContains)
+        com.amap.api.services.core.ServiceSettings.updatePrivacyShow(context, hasShow, hasContains)
     }
 
     private fun applyPrivacyAgree(hasAgree: Boolean) {
         com.amap.api.maps.MapsInitializer.updatePrivacyAgree(context, hasAgree)
+        com.amap.api.location.AMapLocationClient.updatePrivacyAgree(context, hasAgree)
+        com.amap.api.services.core.ServiceSettings.updatePrivacyAgree(context, hasAgree)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        // 引擎卸载时逐个 dispose 遗留视图（dispose 幂等，Flutter 自动调用的
+        // dispose 会二次进入但直接返回），避免视图 MethodChannel 的 handler
+        // 挂在已卸载引擎上泄漏；静态注册表跨引擎共享，必须显式清空。
+        val views = mapViews.values.toList()
         mapViews.clear()
+        views.forEach { it.dispose() }
     }
 }

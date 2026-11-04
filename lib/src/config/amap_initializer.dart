@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 
 import 'amap_api_key.dart';
 import 'amap_privacy_statement.dart';
+import '../util/amap_logger.dart';
 
 /// 插件全局初始化入口。
 ///
@@ -42,11 +43,17 @@ abstract final class AMapInitializer {
     required AMapApiKey apiKey,
     AMapPrivacyStatement? privacyStatement,
   }) async {
+    final privacy = privacyStatement ?? const AMapPrivacyStatement();
+    AMapLogger.d(
+      'init 下发: iosKey=${apiKey.iosKey.isEmpty || apiKey.iosKey == 'YOUR_IOS_KEY' ? "（未配置/占位符！）" : "已配置"}'
+      ' privacy(contains=${privacy.hasContains}, show=${privacy.hasShow}, agree=${privacy.hasAgree})',
+    );
     await _channel.invokeMethod<void>('init', <String, Object?>{
       'apiKey': apiKey.toJson(),
-      'privacy': (privacyStatement ?? const AMapPrivacyStatement()).toJson(),
+      'privacy': privacy.toJson(),
     });
     _initialized = true;
+    AMapLogger.d('init 完成');
   }
 
   /// 同步「隐私弹窗展示」状态（可在 init 之后、用户弹窗行为变化时调用）。

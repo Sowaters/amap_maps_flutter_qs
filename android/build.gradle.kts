@@ -72,9 +72,10 @@ kotlin {
 }
 
 dependencies {
-    // 高德 SDK（mavenCentral 组合构件，与社区 amap_map 同款，已验证可解析）。
-    // MVP 阶段评估切换纯地图构件 com.amap.api:3dmap 以减小包体积。
-    implementation("com.amap.api:3dmap-location-search:10.1.200_loc6.4.9_sea9.7.4")
+    // 高德 SDK 11.3.100（官方离线包，与 iOS 侧版本对齐；11.x 未发布 mavenCentral）。
+    // jar 位于 android/libs，so 位于 android/src/main/jniLibs/{arm64-v8a,armeabi-v7a}。
+    // 注意：无 x86_64 so，模拟器不可用，需真机调试。
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")

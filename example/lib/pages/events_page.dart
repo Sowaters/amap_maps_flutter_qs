@@ -51,13 +51,21 @@ class _EventsPageState extends State<EventsPage> {
                       position: beijingCenter,
                       draggable: true,
                       infoWindow: InfoWindow(title: '点我 / 拖拽我'),
+                      icon: BitmapDescriptor.fromIconPath(
+                        'assets/user.png',
+                        width: 116 * 0.3,
+                        height: 169 * 0.3,
+                      ),
                     ),
                   },
                   onMapLoaded: () =>
                       _log('onMapLoaded：地图加载完成', highlight: true),
                   onTap: (latLng) {
                     // 顺带演示 AMapUtil：点击点到天安门的球面距离
-                    final dist = AMapUtil.distanceBetween(latLng, beijingCenter);
+                    final dist = AMapUtil.distanceBetween(
+                      latLng,
+                      beijingCenter,
+                    );
                     _log(
                       'onTap：${latLng.latitude.toStringAsFixed(5)}, '
                       '${latLng.longitude.toStringAsFixed(5)}'

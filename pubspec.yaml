@@ -4,8 +4,9 @@ description: >-
   successor of the abandoned `amap_flutter_map`, with Dart 3 sealed-class
   overlays, stream-based events and full privacy-compliance APIs.
 version: 0.0.1
-homepage: https://github.com/qs-labs/amap_maps_flutter_qs
-# 发布前占位：仓库地址确定后更新
+homepage: https://github.com/Sowaters/amap_maps_flutter_qs
+repository: https://github.com/Sowaters/amap_maps_flutter_qs
+issue_tracker: https://github.com/Sowaters/amap_maps_flutter_qs/issues
 topics: [map, amap, gaode, maps, china, amap-maps]
 
 environment:

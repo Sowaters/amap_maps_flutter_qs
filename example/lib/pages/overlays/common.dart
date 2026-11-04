@@ -4,40 +4,16 @@ import 'package:flutter/material.dart';
 
 import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 
-/// 覆盖物 demo 通用组件：事件日志卡片、分组控制面板、页面骨架、
-/// 运行时图标绘制工具。
+import '../../ui/demo_widgets.dart';
 
-/// 悬浮在地图底部的事件日志卡片。
-class OverlayEventLog extends StatelessWidget {
-  final String text;
+/// 覆盖物 demo 通用组件：基于全局 Demo UI 体系的页面骨架，
+/// 事件日志、分组控制面板直接复用 [DemoEventLog] / [DemoChipGroup]。
 
-  const OverlayEventLog(this.text, {super.key});
+/// 悬浮在地图底部的事件日志卡片（[DemoEventLog] 的覆盖物页别名）。
+typedef OverlayEventLog = DemoEventLog;
 
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 8,
-      right: 8,
-      bottom: 8,
-      child: Card(
-        color: Theme.of(context).colorScheme.inversePrimary,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text(text, style: const TextStyle(fontSize: 12)),
-        ),
-      ),
-    );
-  }
-}
-
-/// 面板上的一个操作按钮。
-class OverlayAction {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const OverlayAction(this.icon, this.label, this.onTap);
-}
+/// 面板上的一个操作按钮（[DemoChip] 的覆盖物页别名）。
+typedef OverlayAction = DemoChip;
 
 /// 一组操作按钮（带分组标题）。
 class OverlayActionGroup {
@@ -47,7 +23,7 @@ class OverlayActionGroup {
   const OverlayActionGroup(this.label, this.actions);
 }
 
-/// 覆盖物 demo 通用页面骨架：地图 + 悬浮事件日志 + 底部分组控制面板。
+/// 覆盖物 demo 通用页面骨架：地图 + 悬浮事件日志 + 底部圆角控制面板。
 ///
 /// [map] 由各页面自行构造（覆盖物集合与回调都留在页面 State 里），
 /// 骨架只负责布局，保证所有子页面观感一致。
@@ -67,6 +43,7 @@ class OverlayDemoScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: Column(
@@ -76,63 +53,53 @@ class OverlayDemoScaffold extends StatelessWidget {
               children: [map, OverlayEventLog(event)],
             ),
           ),
-          SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final group in groups) ...[
-                    _GroupChips(group: group),
-                    const SizedBox(height: 6),
-                  ],
-                ],
+          Container(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLowest,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border(top: BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.42,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 32,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: scheme.outlineVariant,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      for (final group in groups) ...[
+                        DemoChipGroup(
+                          label: group.label,
+                          chips: group.actions,
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _GroupChips extends StatelessWidget {
-  final OverlayActionGroup group;
-
-  const _GroupChips({required this.group});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 4),
-          child: Text(
-            group.label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final action in group.actions)
-              ActionChip(
-                avatar: Icon(action.icon, size: 18),
-                label: Text(action.label, style: const TextStyle(fontSize: 12)),
-                onPressed: action.onTap,
-              ),
-          ],
-        ),
-      ],
     );
   }
 }

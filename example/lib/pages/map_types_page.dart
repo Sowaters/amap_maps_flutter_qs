@@ -20,6 +20,9 @@ class MapTypesPage extends StatefulWidget {
 class _MapTypesPageState extends State<MapTypesPage> {
   MapType _mapType = MapType.normal;
 
+  // 地图语言（动态更新：map#setLanguage；英文仅标准地图生效、与自定义样式互斥）
+  MapLanguage _language = MapLanguage.chinese;
+
   // 手势开关（动态更新：map#setGestures）
   bool _zoom = true;
   bool _scroll = true;
@@ -49,6 +52,7 @@ class _MapTypesPageState extends State<MapTypesPage> {
                 AMapWidget(
                   initialCameraPosition: initialCamera,
                   mapType: _mapType,
+                  language: _language,
                   minMaxZoomPreference: const MinMaxZoomPreference(3.0, 20.0),
                   zoomGesturesEnabled: _zoom,
                   scrollGesturesEnabled: _scroll,
@@ -99,6 +103,22 @@ class _MapTypesPageState extends State<MapTypesPage> {
               ],
             ),
           ),
+          _SwitchRow(
+            title: '地图语言（map#setLanguage；英文仅标准地图生效、与自定义样式互斥）',
+            labels: const ['中文', '英文'],
+            values: [_language == MapLanguage.chinese, _language == MapLanguage.english],
+            onChanged: (i, _) => setState(
+              () => _language = i == 0 ? MapLanguage.chinese : MapLanguage.english,
+            ),
+          ),
+          if (_language == MapLanguage.english && _mapType != MapType.normal)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '⚠️ 当前地图类型非 standard，英文模式不会生效（SDK 限制）',
+                style: TextStyle(fontSize: 11, color: Colors.orange),
+              ),
+            ),
           _SwitchRow(
             title: '手势（map#setGestures 动态生效）',
             labels: const ['缩放', '平移', '旋转', '倾斜'],

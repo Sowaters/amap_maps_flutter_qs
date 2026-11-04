@@ -9,6 +9,7 @@ import android.util.LruCache
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -16,14 +17,17 @@ import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdate
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
+import com.amap.api.maps.model.BitmapDescriptor
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.CameraPosition
 import com.amap.api.maps.model.Circle
 import com.amap.api.maps.model.CircleOptions
+import com.amap.api.maps.model.CustomMapStyleOptions
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.LatLngBounds
 import com.amap.api.maps.model.Marker
 import com.amap.api.maps.model.MarkerOptions
+import com.amap.api.maps.model.MyLocationStyle
 import com.amap.api.maps.model.Polygon
 import com.amap.api.maps.model.PolygonOptions
 import com.amap.api.maps.model.Polyline
@@ -34,6 +38,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 
 /// 承载高德 [MapView] 的 PlatformView（Hybrid Composition 模式）。
 ///
@@ -58,11 +63,47 @@ class AMapPlatformView(
         /// 部分版本判断前会 trim —— 普通空格会被 trim 成空串仍判为空，
         /// 零宽空格不可见且 trim 不掉（String.trim 只剥 <= U+0020 的字符）
         private const val INFO_WINDOW_PLACEHOLDER = "\u200B"
+
+        /// 全世界可视矩形，等效于"无限制"。
+        /// 解除 limitBounds 时不用 setMapStatusLimits(null)——空值语义在 SDK
+        /// 内部不可靠（iOS 侧曾因空/零矩形被钳制到世界原点导致蓝屏），
+        /// 对齐 iOS 修复方案（MAMapSizeWorld）改用全世界矩形。
+        private val WORLD_BOUNDS = LatLngBounds(
+            LatLng(-85.05112878, -180.0),
+            LatLng(85.05112878, 180.0),
+        )
     }
 
-    private val mapId: Int = (creationParams["mapId"] as? Number)?.toInt() ?: -1
+    /// mapId 缺失/非法时直接 fail-fast：静默回退 -1 会让多个异常实例
+    /// 在静态注册表中互相覆盖、共用同一通道名，排查远比创建失败困难。
+    private val mapId: Int = (creationParams["mapId"] as? Number)?.toInt()
+        ?: throw IllegalArgumentException("AMapPlatformView: creationParams missing valid mapId")
     private val appContext: Context = context.applicationContext
     private val mapView = MapView(context)
+
+    /// 冻结截图层：pop 转场开始时把最后画面定格为静态图并立即隐藏 GLSurfaceView，
+    /// 让 GL 层的异步销毁（surface/EGL 时序差）发生在用户还看着地图页的阶段，
+    /// 根治 HC 模式下"返回后地图残帧叠现一闪而过"。转场取消时解冻恢复。
+    private val freezeView = ImageView(context).apply { visibility = View.GONE }
+
+    /// 对外暴露的 PlatformView 根容器：GLSurfaceView（活地图）+ 截图层。
+    private val container = FrameLayout(context).apply {
+        addView(
+            mapView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        addView(
+            freezeView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
+
     private val amap: AMap = mapView.map
     private val channel = MethodChannel(
         binaryMessenger,
@@ -70,11 +111,23 @@ class AMapPlatformView(
     )
     private var disposed = false
 
+    /// 地图是否已冻结（截图接管显示）。转场取消时解冻。
+    private var frozen = false
+
     // ---- 覆盖物注册表：Dart 侧 id -> 原生对象 ----
     private val markerById = LinkedHashMap<String, Marker>()
     private val polylineById = LinkedHashMap<String, Polyline>()
     private val polygonById = LinkedHashMap<String, Polygon>()
     private val circleById = LinkedHashMap<String, Circle>()
+
+    /// 反向索引：SDK 原生 marker id -> Dart 侧 id。
+    /// 点击/拖拽/气泡渲染等回调按 native id 反查频率高，避免每次 O(n) 遍历 markerById。
+    private val markerIdByNativeId = HashMap<String, String>()
+
+    /// 当前显示气泡的 marker id（tap-to-dismiss 追踪）。
+    /// Android SDK 的气泡不会因点击地图空白处自动关闭（iOS 原生为 deselect
+    /// 语义），由插件自行追踪、在地图点击时主动关闭，对齐 iOS 行为。
+    private var shownInfoWindowMarkerId: String? = null
 
     // 自定义气泡内容：Dart 侧 id -> 气泡图片
     private val customCalloutById = HashMap<String, Bitmap>()
@@ -85,11 +138,11 @@ class AMapPlatformView(
     /// 每次新增/更新都要 decodeByteArray + fromBitmap（bytes 类型），既慢
     /// 又重复产生位图内存。按 key 缓存后同图标只构建一次。
     /// 上限 64 条：单地图图标种类远小于 marker 数量，LRU 防极端场景膨胀。
-    private val iconCache = object : LruCache<String, com.amap.api.maps.model.BitmapDescriptor>(64) {}
+    private val iconCache = object : LruCache<String, BitmapDescriptor>(64) {}
 
     /// bytes 图标的缓存 key：内容 MD5 摘要（128 位，非加密用途，足够防碰撞）。
     private fun ByteArray.cacheKey(): String {
-        val digest = java.security.MessageDigest.getInstance("MD5").digest(this)
+        val digest = MessageDigest.getInstance("MD5").digest(this)
         return "bytes:" + digest.joinToString("") { "%02x".format(it) }
     }
 
@@ -113,11 +166,20 @@ class AMapPlatformView(
             amap.mapType = typeCode.toInt()
         }
 
+        // 地图语言：0=中文 / 1=英文（英文仅标准地图生效，与自定义样式互斥）
+        (params["language"] as? Number)?.let { langCode ->
+            amap.setMapLanguage(if (langCode.toInt() == 1) AMap.ENGLISH else AMap.CHINESE)
+        }
+
         // 缩放范围
         applyMinMaxZoom(params["minZoom"], params["maxZoom"])
 
         // 中心点可视范围限制
-        applyLimitBounds(params["limitBounds"])
+        // 仅在 Dart 显式下发非空 bounds 时才触碰限制属性：从未设置过就不要碰
+        // （对齐 iOS 修复原则）；Dart 侧 creationParams 该键恒存在、未配置时为 null
+        if (params["limitBounds"] != null) {
+            applyLimitBounds(params["limitBounds"])
+        }
 
         // 手势开关（US-04：缩放/平移/旋转/倾斜）
         applyGestures(params["gestures"])
@@ -147,12 +209,14 @@ class AMapPlatformView(
         (max as? Number)?.let { amap.setMaxZoomLevel(it.toFloat()) }
     }
 
+    /// 应用中心点可视范围限制。bounds 缺失/解析失败视为"解除限制"，
+    /// 用全世界矩形替代 setMapStatusLimits(null)（见 [WORLD_BOUNDS] 注释）。
     private fun applyLimitBounds(json: Any?) {
         val bounds = jsonToLatLngBounds(json)
-        if (bounds == null) {
-            amap.setMapStatusLimits(null)
-        } else {
+        if (bounds != null) {
             amap.setMapStatusLimits(bounds)
+        } else {
+            amap.setMapStatusLimits(WORLD_BOUNDS)
         }
     }
 
@@ -177,7 +241,7 @@ class AMapPlatformView(
     }
 
     private fun applyMyLocationStyle(json: Map<*, *>) {
-        val style = com.amap.api.maps.model.MyLocationStyle()
+        val style = MyLocationStyle()
         iconFromJson(json["icon"])?.let { style.myLocationIcon(it) }
         (json["circleFillColor"] as? Number)?.let {
             style.radiusFillColor(it.toInt())
@@ -188,11 +252,11 @@ class AMapPlatformView(
         (json["circleStrokeWidth"] as? Number)?.let { style.strokeWidth(it.toFloat()) }
         // 按名称映射到原生常量，避免魔法数字漂移
         when (json["locationMode"] as? String) {
-            "show" -> style.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_SHOW)
-            "follow" -> style.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_FOLLOW)
-            "mapRotate" -> style.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
-            "locationRotate" -> style.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE)
-            else -> style.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_LOCATE)
+            "show" -> style.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW)
+            "follow" -> style.myLocationType(MyLocationStyle.LOCATION_TYPE_FOLLOW)
+            "mapRotate" -> style.myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
+            "locationRotate" -> style.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE)
+            else -> style.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATE)
         }
         amap.myLocationStyle = style
     }
@@ -200,7 +264,7 @@ class AMapPlatformView(
     private fun applyCustomStyle(json: Map<*, *>) {
         val enabled = (json["enabled"] as? Boolean) ?: true
         if (!enabled) return
-        val options = com.amap.api.maps.model.CustomMapStyleOptions()
+        val options = CustomMapStyleOptions()
         // 本地样式数据优先（对齐官方），其次云端样式 ID（本插件扩展）
         val styleData = json["styleData"] as? ByteArray
         val styleExtraData = json["styleExtraData"] as? ByteArray
@@ -216,7 +280,8 @@ class AMapPlatformView(
                 options.setStyleId(styleId)
             }
         }
-        amap.setCustomMapStyle(options)
+        amap.setCustomMapStyle(options.setEnable(true))
+        // 11.x 起开关由 CustomMapStyleOptions.setEnable 控制（旧 AMap.setCustomMapStyleEnabled 已移除）
     }
 
     private fun applyCameraPosition(json: Map<*, *>) {
@@ -292,8 +357,12 @@ class AMapPlatformView(
 
         val marker = amap.addMarker(options)
         markerById[id] = marker
+        markerIdByNativeId[marker.id] = id
         // 默认显示气泡（InfoWindow.show）
-        if (showOnCreate) marker.showInfoWindow()
+        if (showOnCreate) {
+            marker.showInfoWindow()
+            trackInfoWindowShown(id)
+        }
     }
 
     private fun addPolyline(json: Any?) {
@@ -375,8 +444,11 @@ class AMapPlatformView(
     }
 
     private fun removeMarker(id: String) {
-        markerById.remove(id)?.remove()
+        val removed = markerById.remove(id) ?: return
+        markerIdByNativeId.remove(removed.id)
+        removed.remove()
         customCalloutById.remove(id)
+        if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
     }
 
     /// Marker 差量更新：原地更新属性（不删不建）。
@@ -407,14 +479,19 @@ class AMapPlatformView(
         }
         iconFromJson(map["icon"])?.let { marker.setIcon(it) }
 
-        // infoWindow：title/snippet/content 原地同步
-        val enabled = (map["infoWindowEnable"] as? Boolean) != false
-        val info = if (enabled) map["infoWindow"] as? Map<*, *> else null
+        // infoWindow：title/snippet/content 原地同步。
+        // infoWindowEnable=false → info=null，显式禁用；infoWindow 字段整体缺失
+        // （info==null 且未禁用）→ 视为部分更新，气泡相关状态原样保留。
+        val infoEnabled = (map["infoWindowEnable"] as? Boolean) != false
+        val info = if (infoEnabled) map["infoWindow"] as? Map<*, *> else null
         var hasCustomCallout = false
         if (info != null) {
             (info["content"] as? Map<*, *>)?.let { content ->
                 (content["bytes"] as? ByteArray)?.let { bytes ->
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bitmap == null) {
+                        Log.e(TAG, "Failed to decode custom InfoWindow image for marker $id")
+                    } else {
                         customCalloutById[id] = bitmap
                         hasCustomCallout = true
                     }
@@ -426,10 +503,26 @@ class AMapPlatformView(
                 // 占位符兜底，保证点击时 SDK 会调 InfoWindowAdapter（见常量注释）
                 if (info["title"] == null) marker.setTitle(INFO_WINDOW_PLACEHOLDER)
                 if (info["snippet"] == null) marker.setSnippet(INFO_WINDOW_PLACEHOLDER)
+            } else {
+                // 显式下发了 infoWindow（或禁用气泡）但无有效 content：清除旧气泡
+                customCalloutById.remove(id)
             }
         }
-        if (!hasCustomCallout) customCalloutById.remove(id)
-        if (info?.get("show") == true || wasShown) marker.showInfoWindow()
+
+        // show 字段语义：true → 显式弹出；false → 显式保持隐藏（更新前已打开的
+        // 在上方 hideInfoWindow 关闭）；字段缺省 → 沿用更新前可见性。
+        // 旧逻辑 `show==true || wasShown` 导致 show=false 无法关闭已打开的气泡。
+        when (info?.get("show") as? Boolean) {
+            true -> marker.showInfoWindow()
+            false -> Unit
+            null -> if (wasShown) marker.showInfoWindow()
+        }
+        // 同步 tap-to-dismiss 追踪（以 SDK 实际可见性为准，覆盖所有更新路径）
+        if (marker.isInfoWindowShown) {
+            trackInfoWindowShown(id)
+        } else if (shownInfoWindowMarkerId == id) {
+            shownInfoWindowMarkerId = null
+        }
     }
 
     private fun removePolyline(id: String) {
@@ -451,7 +544,7 @@ class AMapPlatformView(
         add: (Any?) -> Unit,
         remove: (String) -> Unit,
         update: (Any?) -> Unit = { json ->
-            ((json as? Map<*, *>)?.get("id") as? String)?.let(remove)
+            idOf(json)?.let(remove)
             add(json)
         },
     ) {
@@ -461,10 +554,18 @@ class AMapPlatformView(
         (map["toUpdate"] as? List<*>)?.forEach(update)
     }
 
+    /// 从覆盖物 JSON payload 提取 Dart 侧 id，缺失时返回 null（调用方静默跳过）。
+    private fun idOf(json: Any?): String? =
+        (json as? Map<*, *>)?.get("id") as? String
+
     // ---- 事件绑定 ----
 
     private fun bindMapEvents() {
         amap.setOnMapClickListener { latLng ->
+            // tap-to-dismiss：点击地图空白处关闭已显示的气泡，对齐 iOS 的
+            // deselect 语义。iOS 上 deselect 与 mapTap 都会触发，这里同样
+            // 关闭气泡后继续回发 mapTap。
+            dismissTrackedInfoWindow()
             notifyDart("mapTap", latLng.toJsonList())
         }
         amap.setOnMapLongClickListener { latLng ->
@@ -485,16 +586,18 @@ class AMapPlatformView(
 
         amap.setOnMarkerClickListener { marker ->
             val infoWindowWasShown = marker.isInfoWindowShown
-            Log.d(
-                TAG,
-                "onMarkerClick id=${customMarkerId(marker)} shown=$infoWindowWasShown " +
-                    "title=${marker.title} snippet=${marker.snippet} " +
-                    "callout=${customCalloutById[customMarkerId(marker)]?.let { "${it.width}x${it.height}" }}",
-            )
             if (infoWindowWasShown) {
                 marker.hideInfoWindow()
             } else {
                 marker.showInfoWindow()
+            }
+            // 同步 tap-to-dismiss 追踪（再次点击同一 marker 为切换显隐）
+            customMarkerId(marker)?.let { id ->
+                if (infoWindowWasShown) {
+                    if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
+                } else {
+                    trackInfoWindowShown(id)
+                }
             }
             customMarkerId(marker)?.let { notifyDart("markerTap", it) }
             true
@@ -517,10 +620,12 @@ class AMapPlatformView(
                 val id = customMarkerId(marker)
                 val bitmap = id?.let { customCalloutById[it] }
                 if (bitmap != null) {
-                    Log.d(TAG, "Rendering custom InfoWindow marker=$id bitmap=${bitmap.width}x${bitmap.height}")
                     return ImageView(mapView.context).apply {
-                        // 显式布局参数：部分 SDK 版本对无 LayoutParams 的视图测量为 0 尺寸；
-                        // 背景留空，SDK 会补默认 9-patch 气泡底框
+                        // 显式布局参数：部分 SDK 版本对无 LayoutParams 的视图测量为 0 尺寸。
+                        // ⚠️ 必须设置 background（哪怕全透明）：根 View 无背景时 SDK 会在
+                        // 外面补一层默认白色 9-patch 气泡底框（社区反复踩坑确认），
+                        // 设置后气泡 = Widget 截图本身，无白框。
+                        setBackgroundColor(0x00000000)
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -588,8 +693,21 @@ class AMapPlatformView(
         }
     }
 
-    private fun customMarkerId(native: Marker): String? =
-        markerById.entries.firstOrNull { it.value.id == native.id }?.key
+    private fun customMarkerId(native: Marker): String? = markerIdByNativeId[native.id]
+
+    /// 记录气泡已显示。所有 showInfoWindow 调用点统一走此入口，
+    /// 保证 tap-to-dismiss 追踪状态与实际显隐一致。
+    private fun trackInfoWindowShown(id: String) {
+        shownInfoWindowMarkerId = id
+    }
+
+    /// 关闭当前追踪的气泡（若存在）。返回是否真的关闭了一个。
+    private fun dismissTrackedInfoWindow(): Boolean {
+        val id = shownInfoWindowMarkerId ?: return false
+        shownInfoWindowMarkerId = null
+        markerById[id]?.hideInfoWindow()
+        return true
+    }
 
     // ---- 相机更新 ----
 
@@ -615,12 +733,44 @@ class AMapPlatformView(
         val w = mapView.width
         val h = mapView.height
         if (w <= 0 || h <= 0) return null
-        val factor = Math.pow(2.0, -amount.toDouble())
-        val newScreenX = (focusX + (w / 2.0 - focusX) * factor).toInt()
-        val newScreenY = (focusY + (h / 2.0 - focusY) * factor).toInt()
-        val newTarget = amap.projection.fromScreenLocation(Point(newScreenX, newScreenY))
+        // focus 为 Flutter 逻辑像素（dp），Android 屏幕坐标为物理像素，
+        // 先乘 density 对齐单位（iOS point 与逻辑像素天然一致，无需换算）
+        val density = mapView.resources.displayMetrics.density
+        val focusPx = focusX * density
+        val focusPy = focusY * density
+        // 先按 min/max 钳制出目标 zoom，再用有效缩放量换算焦点：
+        // 若直接用请求的 amount 换算，相机已在 min/max 时焦点会漂移
         val newZoom = (pos.zoom + amount).coerceIn(amap.minZoomLevel, amap.maxZoomLevel)
+        val effectiveAmount = newZoom - pos.zoom
+        val factor = Math.pow(2.0, -effectiveAmount.toDouble())
+        val newScreenX = (focusPx + (w / 2.0 - focusPx) * factor).toInt()
+        val newScreenY = (focusPy + (h / 2.0 - focusPy) * factor).toInt()
+        val newTarget = amap.projection.fromScreenLocation(Point(newScreenX, newScreenY))
         return CameraUpdateFactory.newLatLngZoom(newTarget, newZoom)
+    }
+
+    /// 截图监听统一封装：不同 SDK 版本可能只回调单参或双参重载之一（部分版本
+    /// 只走 `onMapScreenShot(bitmap, status)`），若只在单参里应答会导致 result
+    /// 永不返回、Dart 侧 Future 悬挂。两个重载都参与去重，保证 [onShot] 恰好
+    /// 执行一次；SDK 失败时可能回调 null 位图（平台类型），由调用方兜底。
+    private fun takeMapScreenShot(onShot: (Bitmap?) -> Unit) {
+        amap.getMapScreenShot(object : AMap.OnMapScreenShotListener {
+            private var answered = false
+
+            private fun answer(bitmap: Bitmap?) {
+                if (answered) return
+                answered = true
+                onShot(bitmap)
+            }
+
+            override fun onMapScreenShot(bitmap: Bitmap) {
+                answer(bitmap)
+            }
+
+            override fun onMapScreenShot(bitmap: Bitmap, status: Int) {
+                answer(bitmap)
+            }
+        })
     }
 
     // ---- MethodChannel 处理 ----
@@ -675,6 +825,29 @@ class AMapPlatformView(
                 (call.arguments as? Number)?.let { amap.mapType = it.toInt() }
                 result.success(null)
             }
+            "map#setLanguage" -> {
+                val langCode = (call.arguments as? Number)?.toInt() ?: 0
+                amap.setMapLanguage(if (langCode == 1) AMap.ENGLISH else AMap.CHINESE)
+                result.success(null)
+            }
+            "map#dispose" -> {
+                // Dart State.dispose 驱动的释放（幂等兜底）：Android 引擎本就会
+                // 自动调 dispose()，此消息仅在引擎路径迟到/未触发时兜底
+                dispose()
+                result.success(null)
+            }
+            "map#setCustomStyle" -> {
+                // 动态切换自定义样式（无需重建地图）；
+                // null 或 enabled=false 关闭自定义样式
+                val style = call.arguments as? Map<*, *>
+                if (style != null && (style["enabled"] as? Boolean) ?: true) {
+                    applyCustomStyle(style)
+                } else {
+                    // 11.x：通过空的关闭态 Options 关闭自定义样式（替代 setCustomMapStyleEnabled(false)）
+                    amap.setCustomMapStyle(CustomMapStyleOptions().setEnable(false))
+                }
+                result.success(null)
+            }
             "map#setMinMaxZoomPreference" -> {
                 val json = call.arguments as? Map<*, *>
                 applyMinMaxZoom(json?.get("min"), json?.get("max"))
@@ -709,29 +882,37 @@ class AMapPlatformView(
                 result.success(null)
             }
             "map#showInfoWindow" -> {
-                (call.arguments as? String)?.let { markerById[it]?.showInfoWindow() }
+                (call.arguments as? String)?.let { id ->
+                    markerById[id]?.showInfoWindow()
+                    trackInfoWindowShown(id)
+                }
                 result.success(null)
             }
             "map#hideInfoWindow" -> {
-                (call.arguments as? String)?.let { markerById[it]?.hideInfoWindow() }
+                (call.arguments as? String)?.let { id ->
+                    markerById[id]?.hideInfoWindow()
+                    if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
+                }
                 result.success(null)
             }
             "map#takeSnapshot" -> {
-                amap.getMapScreenShot(object : AMap.OnMapScreenShotListener {
-                    private var answered = false
-
-                    override fun onMapScreenShot(bitmap: Bitmap) {
-                        if (answered) return
-                        answered = true
+                takeMapScreenShot { bitmap ->
+                    if (bitmap == null) {
+                        result.error("SNAPSHOT_FAILED", "AMap returned null screenshot bitmap", null)
+                    } else {
                         val stream = ByteArrayOutputStream()
                         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
                         result.success(stream.toByteArray())
                     }
-
-                    override fun onMapScreenShot(bitmap: Bitmap, status: Int) {
-                        // 二次回调忽略，避免 result 重复应答
-                    }
-                })
+                }
+            }
+            "map#freeze" -> {
+                freezeMap()
+                result.success(null)
+            }
+            "map#unfreeze" -> {
+                unfreezeMap()
+                result.success(null)
             }
             else -> result.notImplemented()
         }
@@ -776,7 +957,10 @@ class AMapPlatformView(
             "scrollBy" -> {
                 val dx = (json["dx"] as? Number)?.toFloat() ?: 0f
                 val dy = (json["dy"] as? Number)?.toFloat() ?: 0f
-                CameraUpdateFactory.scrollBy(dx, dy)
+                // Dart 约定逻辑像素：乘 density 转物理像素（iOS point 与逻辑
+                // 像素天然等值；对齐 google_maps_flutter 官方插件的换算惯例）
+                val density = mapView.resources.displayMetrics.density
+                CameraUpdateFactory.scrollBy(dx * density, dy * density)
             }
             else -> null
         }
@@ -784,7 +968,34 @@ class AMapPlatformView(
 
     // ---- 生命周期 ----
 
-    override fun getView() = mapView
+    override fun getView() = container
+
+    /// 冻结：截图接管显示 + 立即隐藏 GLSurfaceView。
+    ///
+    /// GL 层的 surface/EGL 销毁是 GL 线程异步的，若等到 dispose（pop 动画结束
+    /// 之后）才处理，最后一帧地图会叠在已返回的上一页上 1~2 帧（"一闪而过"）。
+    /// 冻结必须在 pop 转场开始时调用：此时 GL 层销毁的视觉差被截图无缝覆盖。
+    private fun freezeMap() {
+        if (frozen || disposed) return
+        takeMapScreenShot { bitmap ->
+            // 位图缺失（SDK 失败）或已销毁：放弃冻结，保持活地图原样
+            if (disposed || bitmap == null) return@takeMapScreenShot
+            frozen = true
+            freezeView.setImageBitmap(bitmap)
+            freezeView.visibility = View.VISIBLE
+            // GLSurfaceView 退场：surface 异步销毁期间，冻结截图与残帧内容
+            // 一致（同屏内容），视觉无感；转场结束时 GL 层早已销毁干净。
+            mapView.visibility = View.GONE
+        }
+    }
+
+    /// 解冻：转场被取消（如预测性返回滑回）时恢复活地图。
+    private fun unfreezeMap() {
+        if (!frozen || disposed) return
+        frozen = false
+        freezeView.visibility = View.GONE
+        mapView.visibility = View.VISIBLE
+    }
 
     override fun dispose() {
         if (disposed) return
@@ -792,10 +1003,17 @@ class AMapPlatformView(
         channel.setMethodCallHandler(null)
         AmapMapsFlutterQsPlugin.unregisterView(mapId)
         markerById.clear()
+        markerIdByNativeId.clear()
         customCalloutById.clear()
+        shownInfoWindowMarkerId = null
         polylineById.clear()
         polygonById.clear()
         circleById.clear()
+        // GLSurfaceView 的 surface/EGL 销毁是异步的（GL 线程）：onPause 后最后一帧
+        // 地图仍占据合成层，直到 surfaceDestroyed 真正完成（日志可见 surface lost →
+        // releasing EGL context 的时序差）。若不先立即隐藏，返回上一页后残留帧会
+        // 叠现 1~2 帧，表现为"地图一闪而过"。先 GONE 让视图当场退出可见层级。
+        mapView.visibility = View.GONE
         mapView.onPause()
         mapView.onDestroy()
     }
@@ -852,17 +1070,32 @@ class AMapPlatformView(
                     }
                 }
             // Flutter 资源（fromIconPath / fromAssetImage），见 assetIcon()
-            "asset", "assetImage" -> (map["asset"] as? String)?.let { path -> assetIcon(path) }
+            "asset", "assetImage" -> (map["asset"] as? String)?.let { path ->
+                assetIcon(
+                    path,
+                    (map["width"] as? Number)?.toDouble(),
+                    (map["height"] as? Number)?.toDouble(),
+                )
+            }
             "bytes" -> (map["bytes"] as? ByteArray)?.let { bytes ->
-                val key = bytes.cacheKey()
-                iconCache.get(key) ?: BitmapFactory
-                    .decodeByteArray(bytes, 0, bytes.size)
-                    ?.let { BitmapDescriptorFactory.fromBitmap(it) }
-                    ?.also { iconCache.put(key, it) }
-                    ?: run {
-                        Log.e(TAG, "Failed to decode icon bytes (${bytes.size} bytes)")
-                        null
+                val widthDp = (map["width"] as? Number)?.toDouble()
+                val heightDp = (map["height"] as? Number)?.toDouble()
+                val key = "${bytes.cacheKey()}:${widthDp ?: 0.0}:${heightDp ?: 0.0}"
+                val cached = iconCache.get(key)
+                if (cached != null) {
+                    cached
+                } else {
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val descriptor = bitmap?.let {
+                        BitmapDescriptorFactory.fromBitmap(scaledByDp(it, widthDp, heightDp))
                     }
+                    if (descriptor != null) {
+                        iconCache.put(key, descriptor)
+                    } else {
+                        Log.e(TAG, "Failed to decode icon bytes (${bytes.size} bytes)")
+                    }
+                    descriptor
+                }
             }
             else -> null
         }
@@ -881,8 +1114,13 @@ class AMapPlatformView(
     ///
     /// 任何失败只记日志并返回 null，绝不缓存 null —— 调用方对 null 已有
     /// 兜底（Marker 回退默认图标 / Polyline 回退纯色）。
-    private fun assetIcon(path: String): com.amap.api.maps.model.BitmapDescriptor? {
-        iconCache.get("asset:$path")?.let { return it }
+    private fun assetIcon(
+        path: String,
+        widthDp: Double? = null,
+        heightDp: Double? = null,
+    ): BitmapDescriptor? {
+        val cacheKey = "asset:$path:${widthDp ?: 0.0}:${heightDp ?: 0.0}"
+        iconCache.get(cacheKey)?.let { return it }
         val stripped = path.replace(Regex("""^\d+(\.\d+)?x/"""), "")
         val candidates = if (stripped == path) listOf(path) else listOf(path, stripped)
         for (candidate in candidates) {
@@ -896,12 +1134,31 @@ class AMapPlatformView(
             } catch (e: Exception) {
                 null
             } ?: continue
-            return BitmapDescriptorFactory.fromBitmap(bitmap)?.also {
-                iconCache.put("asset:$path", it)
+            return BitmapDescriptorFactory.fromBitmap(scaledByDp(bitmap, widthDp, heightDp))?.also {
+                iconCache.put(cacheKey, it)
             }
         }
         Log.e(TAG, "Failed to load Flutter asset icon: $path")
         return null
+    }
+
+    /// 按目标逻辑点尺寸缩放位图（fromIconPath / fromBytes 的 width/height）。
+    ///
+    /// [widthDp] / [heightDp] 只给其一时，另一边按原图宽高比推导；
+    /// 都为 null 时原样返回。缩放结果随尺寸一起参与缓存键，
+    /// 避免同路径不同尺寸互相污染。
+    private fun scaledByDp(bitmap: Bitmap, widthDp: Double?, heightDp: Double?): Bitmap {
+        if (widthDp == null && heightDp == null) return bitmap
+        val density = appContext.resources.displayMetrics.density
+        val targetW =
+            if (widthDp != null) (widthDp * density).toInt().coerceAtLeast(1)
+            else (heightDp!! * density * bitmap.width.toDouble() / bitmap.height)
+                .toInt().coerceAtLeast(1)
+        val targetH =
+            if (heightDp != null) (heightDp * density).toInt().coerceAtLeast(1)
+            else (widthDp!! * density * bitmap.height.toDouble() / bitmap.width)
+                .toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
     }
 
     private fun LatLng.toJsonList() = listOf(latitude, longitude)

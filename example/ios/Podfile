@@ -29,6 +29,9 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # 2026-11-03 定案：蓝屏真根因是插件对 limitBounds:null 误设零矩形 limitMapRect
+  # （非 SDK bug），修复后回滚 vendored 11.3.100（带 tileLoadCallback 诊断）。
+  pod 'AMap3DMap', :path => 'AMap3DMap-local.podspec'
   target 'RunnerTests' do
     inherit! :search_paths
   end

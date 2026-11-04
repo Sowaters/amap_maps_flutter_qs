@@ -40,10 +40,10 @@
 
 | 平台 | 最低版本 | 地图 SDK |
 | --- | --- | --- |
-| Android | minSdk 24 | `com.amap.api:3dmap-location-search:10.1.200_loc6.4.9_sea9.7.4` |
-| iOS | 13.0 | AMap3DMap pod（SwiftPM） |
+| Android | minSdk 24 | AMap3DMap/Search/Location **11.3.100** 官方离线包（jar + so 已随插件分发；11.x 未上 mavenCentral） |
+| iOS | 13.0 | AMap3DMap pod `~> 11.2`（CocoaPods trunk） |
 
-支持 ABI：`armeabi-v7a` / `arm64-v8a` / `x86_64`（模拟器可跑）。
+支持 ABI：`armeabi-v7a` / `arm64-v8a`。**离线包不含 x86_64 切片，Android 模拟器无法运行地图，请使用真机调试。**
 
 ## 快速开始
 
@@ -122,12 +122,20 @@ AMapWidget(
 ### 5. 自定义气泡（Widget → PNG）
 
 ```dart
-// 1. 把任意 Flutter Widget 渲染为 PNG（屏幕外截图，静态快照）
-final png = await renderWidgetToPng(context, const Card(child: Text('自定义气泡')));
-// 2. 作为整个气泡窗口内容
+// 1. 把任意 Flutter Widget 渲染为 PNG（屏幕外截图，静态快照；
+//    返回快照的 png 字节 + 逻辑尺寸）
+final snapshot = await renderWidgetToPng(context, const Card(child: Text('自定义气泡')));
+// 2. 作为整个气泡窗口内容（务必带上逻辑尺寸，否则 iOS 会把
+//    pixelRatio 3 的 PNG 物理像素当点显示、放大 3 倍）
 final marker = Marker(
   position: pos,
-  infoWindow: InfoWindow(content: BitmapDescriptor.fromBytes(png)),
+  infoWindow: InfoWindow(
+    content: BitmapDescriptor.fromBytes(
+      snapshot.png,
+      width: snapshot.width,
+      height: snapshot.height,
+    ),
+  ),
 );
 // 3. 手动控制显隐
 await controller.showInfoWindow(marker.id);
@@ -153,16 +161,23 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 
 ## 平台差异
 
-以下能力目前仅 Android 支持，iOS 将在后续版本按 AMap3DMap 实际 API 补齐：
-
 | 能力 | Android | iOS |
 | --- | --- | --- |
-| 自定义地图样式（`customStyleOptions`） | ✅ | 待对接 |
-| 定位蓝点样式（`myLocationStyleOptions` 完整样式） | ✅ | 待对接 |
-| 地图截图 `takeSnapshot` | ✅ | 待对接 |
-| Marker `alpha` / `rotation` / `zIndex`、Polyline 虚线细分 / capType / joinType | ✅ | 待补齐 |
+| 自定义地图样式（`customStyleOptions`） | ✅ | ✅ |
+| 定位蓝点样式（`myLocationStyleOptions` 完整样式） | ✅ | ✅ |
+| 地图截图 `takeSnapshot` | ✅ | ✅ |
+| Polyline 纹理线（`customTexture`）/ capType（含 arrow）/ joinType | ✅ | ✅ |
+| Marker `rotation` / `zIndex`（`alpha` 双端已支持） | ✅ | 待补齐 |
 
 其余特性（覆盖物 / 事件 / 相机 / 手势 / UI 开关 / `limitBounds` / 审图号等）双端一致。
+
+### iOS 26 渲染说明
+
+早前观察到的 iOS 26「整屏蓝屏/海面」现象，经排查**根因在插件自身**：对 SDK
+`limitMapRect` 属性传入了零矩形（其语义为「可见区域矩形边界」，零矩形会钳制到
+世界原点并触发强制 zoom 适配）。该问题已在 `0.0.1` 修复：建图时未显式下发
+`limitBounds` 不再触碰该属性，显式解除时以全世界矩形恢复（10.1.600 / 11.3.100
+双版本真机验证）。
 
 ## 合规注意
 
@@ -177,7 +192,9 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 - [x] M0：地图渲染 + 相机 + 事件
 - [x] MVP（0.0.1）：覆盖物差量更新、事件全量、手势/UI 开关动态更新、
   自定义气泡、几何运算 XOR、`limitBounds`、`zoomByFocus`（当前）
-- [ ] v1.1：iOS 补齐平台差异项（自定义样式 / 蓝点样式 / 截图 / 覆盖物属性）、AMapUtil 扩展
+- [x] iOS 平台差异补齐：takeSnapshot / poiTap / infoWindowTap / 蓝点样式 / 自定义地图样式、
+  iOS 26 渲染错位 workaround（见[平台差异](#平台差异)）
+- [ ] v1.1：Marker `rotation` / `zIndex` 的 iOS 对接、AMapUtil 扩展
 - [ ] v2.0：独立服务插件（搜索 / 地理编码）
 
 ## License

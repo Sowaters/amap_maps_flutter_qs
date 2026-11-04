@@ -25,8 +25,16 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
   int _lastGenMs = -1;
 
   /// 网格生成 n 个 Marker（行优先，环绕地图中心）。
+  ///
+  /// 全部 Marker 共用同一 icon / InfoWindow 实例（值相等，diff 不会误判更新），
+  /// 真正的生成压力落在 Marker 对象与序列化上。
   static Set<Marker> _generate(int n) {
     final cols = math.sqrt(n).ceil();
+    final icon = BitmapDescriptor.fromIconPath(
+      'assets/user.png',
+      width: 116 * 0.3,
+      height: 169 * 0.3,
+    );
     return <Marker>{
       for (var i = 0; i < n; i++)
         Marker(
@@ -35,6 +43,8 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
             _center.latitude + (i ~/ cols) * _gridStep,
             _center.longitude + (i % cols) * _gridStep,
           ),
+          icon: icon,
+          infoWindow: InfoWindow(title: '用户 #$i', snippet: 'Marker 压力测试气泡'),
         ),
     };
   }
