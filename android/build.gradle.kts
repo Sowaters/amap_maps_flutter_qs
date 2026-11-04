@@ -72,10 +72,10 @@ kotlin {
 }
 
 dependencies {
-    // 高德 SDK 11.3.100（官方离线包，与 iOS 侧版本对齐；11.x 未发布 mavenCentral）。
-    // jar 位于 android/libs，so 位于 android/src/main/jniLibs/{arm64-v8a,armeabi-v7a}。
-    // 注意：无 x86_64 so，模拟器不可用，需真机调试。
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+    // 高德地图/定位/搜索三合一 SDK（mavenCentral，2026-10 起官方上架）。
+    // 版本与此前离线包完全一致（3DMap 11.3.100 / Location 11.3.101 / Search 9.8.1，
+    // so 内置于 jar 的 lib/{abi}/），无需再随包分发 jar 与 so。
+    implementation("com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")

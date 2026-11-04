@@ -40,10 +40,10 @@
 
 | 平台 | 最低版本 | 地图 SDK |
 | --- | --- | --- |
-| Android | minSdk 24 | AMap3DMap/Search/Location **11.3.100** 官方离线包（jar + so 已随插件分发；11.x 未上 mavenCentral） |
+| Android | minSdk 24 | `com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`（mavenCentral，Gradle 自动拉取） |
 | iOS | 13.0 | AMap3DMap pod `~> 11.2`（CocoaPods trunk） |
 
-支持 ABI：`armeabi-v7a` / `arm64-v8a`。**离线包不含 x86_64 切片，Android 模拟器无法运行地图，请使用真机调试。**
+支持 ABI：`armeabi-v7a` / `arm64-v8a`（**无 x86_64 切片，Android 模拟器无法运行地图，请使用真机调试**）。
 
 ## 快速开始
 
@@ -184,11 +184,11 @@ final meters = AMapUtil.distanceBetween(beiJing, shangHai);
 
 - 本插件为独立开发的社区作品，与高德官方无隶属关系，亦未使用高德官方
   `amap_flutter_map` 的源码（仅 API 形状对齐以方便迁移）。
-- Android 端随包分发了高德官方 SDK 离线包（`AMap3DMap 11.3.100` /
-  `AMapSearch 9.8.1` / `AMapLocation 11.3.101` 的 jar 与 so）。该 SDK 的著作权
-  归属高德软件（AutoNavi / AMap），其获取与使用须遵守
-  [高德开放平台服务协议](https://lbs.amap.com/home/terms/)；iOS 端则通过
-  CocoaPods 官方渠道（trunk）分发，不在本包内携带。
+- Android 端通过 mavenCentral 引入高德官方 SDK
+  （`com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`），iOS 端通过
+  CocoaPods trunk 引入（`AMap3DMap ~> 11.2`）——双端均经官方分发渠道，本插件不携带
+  任何 SDK 二进制。SDK 的著作权归属高德软件（AutoNavi / AMap），其获取与使用须遵守
+  [高德开放平台服务协议](https://lbs.amap.com/home/terms/)。
 - 使用本插件即表示您已按高德要求注册开发者账号、申请合法 Key，并在 App 内
   落地隐私合规（弹窗展示与用户同意）。
 
