@@ -45,6 +45,18 @@
 
 支持 ABI：`armeabi-v7a` / `arm64-v8a`（**无 x86_64 切片，Android 模拟器无法运行地图，请使用真机调试**）。
 
+> **iOS `pod install` 报 jsdelivr SSL 错误？** CocoaPods trunk 会把 spec 文件重定向到
+> `cdn.jsdelivr.net`，国内网络经常失败（`Response: SSL connect error`）。解决方式任选：
+> ① 终端挂代理后重试；② 换用可达的 jsdelivr 镜像手动补缓存，例如：
+>
+> ```bash
+> mkdir -p ~/.cocoapods/repos/trunk/Specs/5/f/c/AMap3DMap/11.2.100
+> curl -o ~/.cocoapods/repos/trunk/Specs/5/f/c/AMap3DMap/11.2.100/AMap3DMap.podspec.json \
+>   https://testingcf.jsdelivr.net/cocoa/Specs/5/f/c/AMap3DMap/11.2.100/AMap3DMap.podspec.json
+> ```
+>
+> spec 命中本地缓存后，Pod 二进制从 `a.amap.com` 下载，不再依赖 jsdelivr。
+
 ## 快速开始
 
 ### 1. 申请 Key
