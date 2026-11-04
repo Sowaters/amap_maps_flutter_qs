@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'amap_maps_flutter_qs'
-  s.version          = '0.0.1'
+  s.version          = '0.1.0'
   s.summary          = 'AMap (Gaode) 3D map plugin for Flutter.'
   s.description      = <<-DESC
 A modern, maintained AMap 3D map plugin for Flutter.

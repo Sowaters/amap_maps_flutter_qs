@@ -1,4 +1,4 @@
-## 0.0.1
+## 0.1.0
 
 首个发布版本。单包架构（Dart 层 + Android Kotlin + iOS Swift），API 形状与官方
 `amap_flutter_map` 3.0.0 对齐，便于从官方插件平滑迁移。

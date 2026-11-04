@@ -38,7 +38,7 @@ flutter pub add amap_maps_flutter_qs
 
 ```yaml
 dependencies:
-  amap_maps_flutter_qs: ^0.0.1
+  amap_maps_flutter_qs: ^0.1.0
 ```
 
 ## 快速开始
