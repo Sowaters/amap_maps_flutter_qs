@@ -181,6 +181,17 @@ end
 > `use_frameworks! :linkage => :static`（静态链接的 frameworks），
 > 同样兼容高德静态 SDK。
 
+#### SwiftPM 说明
+
+本插件**暂不支持 Swift Package Manager**：插件未提供 `Package.swift`，
+开启 SwiftPM 集成（`flutter build ios --enable-swift-package-manager`）时
+Flutter 会自动回退到 CocoaPods 引入本插件，**功能不受影响**，
+但构建机仍需安装 CocoaPods。
+
+这不是 bug 而是上游限制：`AMap3DMap` 仅通过 CocoaPods trunk 分发，
+高德官方暂无 SPM 支持，插件无法在保持「零二进制、官方渠道分发」
+策略的前提下迁移 SwiftPM。待高德官方提供 SPM 渠道后会跟进支持。
+
 ## 权限说明
 
 不同能力所需的原生权限不同，按需声明即可：
