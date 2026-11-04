@@ -22,8 +22,6 @@
 
 ## 已知平台差异
 
-- `takeSnapshot`：仅 Android；iOS 后续版本支持。
-- `CameraTargetBounds` / `MyLocationStyleOptions` 样式 / 自定义样式 / 虚线细分样式 /
-  Marker rotation / alpha / zIndex：Android 完整支持，iOS 待补齐（详见插件 CHANGELOG）。
-- 手势开关、缩放范围、蓝点样式当前在地图创建时生效（Demo 中通过切换重建地图验证），
-  动态热更新随后续版本支持。
+- `CameraTargetBounds`（地图中心点范围限制）：仅 Android；iOS 后续版本支持
+  （`limitBounds` 双端均支持）。
+- Marker `rotation` / `alpha`：Android 完整支持，iOS 待补齐。

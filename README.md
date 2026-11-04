@@ -1,71 +1,55 @@
 # amap_maps_flutter_qs
 
-高德地图（AMap / Gaode）3D 地图 Flutter 插件。
+[![pub package](https://img.shields.io/pub/v/amap_maps_flutter_qs.svg)](https://pub.dev/packages/amap_maps_flutter_qs)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-> 官方 `amap_flutter_map` 自 2021 年停止维护（不兼容 Flutter 3.x / AGP 7+ / x86_64 模拟器），
-> 本插件是其现代化继任者：单包架构、Dart 3 密封类覆盖物、隐私合规 API 齐全。
->
-> 当前版本 `0.0.1`：MVP 能力已齐（覆盖物差量更新引擎 + 事件全量 + 自定义气泡 + 几何运算），
-> iOS 个别能力尚在补齐中（见[平台差异](#平台差异)）。API 可能随版本调整。
+高德地图（AMap / Gaode）3D 地图 Flutter 插件。官方 `amap_flutter_map` 已停止维护，
+本插件是其现代继任者：单包架构（Dart + Android Kotlin + iOS Swift），
+API 形状对齐 `google_maps_flutter` 与官方插件，便于平滑迁移。
 
 ## 特性
 
-- ✅ `AMapWidget` 地图渲染（Android Hybrid Composition 兼容 GLSurfaceView，iOS UiKitView）
-- ✅ `AMapInitializer.init`：ApiKey + 隐私合规一站式 Dart 侧初始化
-- ✅ `AMapController` 相机控制：`moveCamera(update, animated, duration)` + **10 种 `CameraUpdate` 工厂**
-  （`newLatLng` / `newLatLngZoom` / `newLatLngBounds` / `newCameraPosition` / `zoomTo` / `zoomBy` /
-  `zoomIn` / `zoomOut` / `zoomByFocus` / `scrollBy`），其中 `zoomByFocus` Android 端以投影换算模拟实现
-- ✅ 覆盖物 Marker / Polyline / Polygon / Circle，声明式差量更新
-  （`MarkerUpdates` / `PolylineUpdates` / `PolygonUpdates` / `CircleUpdates`，仅下发增/删/改）
-- ✅ `BitmapDescriptor` 全量工厂（`defaultMarkerWithHue` / `fromIconPath` / `fromAssetImage` / `fromBytes`）
-- ✅ Polyline 纹理线（`customTexture`）与大地曲线（`geodesic`）、虚线样式；Polygon 孔洞（`holes`）
-- ✅ 地图事件全量：点击 / 长按 / POI（`onPoiTouched`）/ Marker 点击与拖拽 /
-  InfoWindow 点击 / 相机移动（`onCameraMove` / `onCameraMoveEnd`）/ 加载完成（`onMapLoaded`）
-- ✅ UI 开关（路况 / POI 点击 / 建筑物 / 标注 / 指南针 / 比例尺）与四类手势开关，
-  **均支持创建时与 `didUpdateWidget` 动态更新**
-- ✅ 相机限制：`MinMaxZoomPreference`（缩放级别范围）与 `limitBounds`（可视范围限制，动态更新）
-- ✅ 定位蓝点（`MyLocationStyleOptions`，五种模式）
-- ✅ 自定义地图样式（官方本地 `styleData` 二进制 + 云端样式 ID 双模式，Android）
-- ✅ **自定义气泡**：`InfoWindow.content`（图片替换整个气泡）+ `renderWidgetToPng`
-  （任意 Flutter Widget → PNG 截图）+ `controller.showInfoWindow` / `hideInfoWindow`
-- ✅ **几何运算工具 `GeometryUtil`**（基于 clipper2）：`xorCircles` / `xorPolygons` / `xorCirclePolygon`
-  计算两形状互斥区域（XOR），返回含孔洞、可直接渲染的 `Polygon` 列表
-- ✅ **距离测量 `AMapUtil`**：`distanceBetween`（haversine 球面距离）、`distanceToBounds`
-- ✅ 地图截图 `takeSnapshot`、可视区域查询 `getVisibleRegion`、审图号查询（普通 / 卫星）
+- **一站式初始化**：`AMapInitializer.init` 同时完成 ApiKey 注入与隐私合规同步
+  （Android / iOS 双端合规接口均已封装）
+- **全量地图能力**：地图类型、中英文切换、路况 / POI / 建筑等 UI 开关、
+  四种手势开关，均支持创建时配置与动态更新
+- **相机控制**：10 种 `CameraUpdate` 工厂 + `moveCamera` / `animateCamera`、
+  缩放范围、可视区域边界限制
+- **覆盖物**：Marker / Polyline / Polygon / Circle，内置**差量更新引擎**
+  （仅下发增 / 删 / 改三部分），支持纹理线、大地曲线、虚线、孔洞多边形
+- **自定义气泡**：任意 Flutter Widget → PNG → 整个气泡窗口
+  （`renderWidgetToPng` + `InfoWindow.content`）
+- **几何运算**：`GeometryUtil` 基于 clipper2 实现圆 / 多边形互斥区域（XOR）计算
+- **地图事件**：点击 / 长按 / POI / Marker 点击与拖拽 / 气泡点击 /
+  相机移动 / 加载完成
+- **截图与合规**：地图截图、审图号查询（App 上架合规展示）
+- 双端 SDK 均经官方渠道分发，插件包零二进制：
+  Android 走 mavenCentral，iOS 走 CocoaPods trunk
 
-> API 形状与官方 `amap_flutter_map` 3.0.0 对齐，从官方迁移见
-> [MIGRATION.md](https://github.com/Sowaters/amap_maps_flutter_qs/blob/master/MIGRATION.md)。
+## 安装
 
-## 平台要求
+```bash
+flutter pub add amap_maps_flutter_qs
+```
 
-| 平台 | 最低版本 | 地图 SDK |
-| --- | --- | --- |
-| Android | minSdk 24 | `com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`（mavenCentral，Gradle 自动拉取） |
-| iOS | 13.0 | AMap3DMap pod `~> 11.2`（CocoaPods trunk） |
-
-支持 ABI：`armeabi-v7a` / `arm64-v8a`（**无 x86_64 切片，Android 模拟器无法运行地图，请使用真机调试**）。
-
-> **iOS `pod install` 报 jsdelivr SSL 错误？** CocoaPods trunk 会把 spec 文件重定向到
-> `cdn.jsdelivr.net`，国内网络经常失败（`Response: SSL connect error`）。解决方式任选：
-> ① 终端挂代理后重试；② 换用可达的 jsdelivr 镜像手动补缓存，例如：
->
-> ```bash
-> mkdir -p ~/.cocoapods/repos/trunk/Specs/5/f/c/AMap3DMap/11.2.100
-> curl -o ~/.cocoapods/repos/trunk/Specs/5/f/c/AMap3DMap/11.2.100/AMap3DMap.podspec.json \
->   https://testingcf.jsdelivr.net/cocoa/Specs/5/f/c/AMap3DMap/11.2.100/AMap3DMap.podspec.json
-> ```
->
-> spec 命中本地缓存后，Pod 二进制从 `a.amap.com` 下载，不再依赖 jsdelivr。
+```yaml
+dependencies:
+  amap_maps_flutter_qs: ^0.0.1
+```
 
 ## 快速开始
 
 ### 1. 申请 Key
 
-在[高德开放平台](https://console.amap.com)申请：
-- Android：按「包名 + 签名 SHA1」
-- iOS：按 BundleID
+在 [高德开放平台控制台](https://console.amap.com) 创建应用并申请 Key：
 
-### 2. 初始化（必须早于任何地图 Widget）
+- **Android Key**：按「包名 + 签名 SHA1」
+- **iOS Key**：按 BundleID
+
+### 2. 初始化（必须）
+
+> ⚠️ **隐私合规**：真实 App 必须先展示隐私弹窗，用户同意后再调用 `init`
+> 并传入真实的合规状态。以下示例为演示方便直接声明「已同意」，勿照抄。
 
 ```dart
 import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
@@ -74,105 +58,177 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AMapInitializer.init(
     apiKey: const AMapApiKey(
-      androidKey: 'YOUR_ANDROID_KEY',
-      iosKey: 'YOUR_IOS_KEY',
+      androidKey: '你的AndroidKey',
+      iosKey: '你的iOSKey',
     ),
     privacyStatement: const AMapPrivacyStatement(
-      hasContains: true, // 隐私弹窗包含高德隐私条款
-      hasShow: true,     // 已展示隐私弹窗
-      hasAgree: true,    // 用户已同意 —— 必须在用户真实同意后置 true
+      hasContains: true, // SDK 采集个人信息声明
+      hasShow: true,     // 已向用户展示隐私政策
+      hasAgree: true,    // 用户已同意（应在真实同意后置 true）
     ),
   );
   runApp(const MyApp());
 }
 ```
 
-> ⚠️ 合规要求：宿主 App 必须先弹隐私授权窗，用户同意后再传真实状态，
-> 否则 SDK 按未授权处理（地图不渲染）。Android Key 也可以改用
-> `AndroidManifest.xml` 中 `com.amap.api.v2.apikey` meta-data 配置。
-
-### 3. 展示地图
+### 3. 显示地图
 
 ```dart
-const AMapWidget(
-  initialCameraPosition: CameraPosition(
-    target: LatLng(39.909187, 116.397451),
-    zoom: 10,
-  ),
-)
-```
+import 'package:amap_maps_flutter_qs/amap_maps_flutter_qs.dart';
 
-### 4. 相机控制与覆盖物
+class MapPage extends StatefulWidget {
+  const MapPage({super.key});
 
-```dart
-AMapWidget(
-  // initialCameraPosition 可省略（默认北京中心 zoom 10）
-  onMapCreated: (controller) {
-    // 与官方一致：animated 默认 true，duration 默认 250ms
-    controller.moveCamera(
-      CameraUpdate.newLatLngZoom(const LatLng(31.230416, 121.473701), 12),
+  @override
+  State<MapPage> createState() => _MapPageState();
+}
+
+class _MapPageState extends State<MapPage> {
+  AMapController? _controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return AMapWidget(
+      initialCameraPosition: const CameraPosition(
+        target: LatLng(39.909187, 116.397451), // 北京天安门
+        zoom: 12,
+      ),
+      onMapCreated: (controller) => _controller = controller,
+      onTap: (latLng) => print('点击：$latLng'),
+      markers: {
+        const Marker(
+          markerId: MarkerId('tiananmen'),
+          position: LatLng(39.909187, 116.397451),
+          infoWindow: InfoWindow(title: '天安门', snippet: '北京市东城区'),
+        ),
+      },
     );
-  },
-  markers: {
-    Marker(
-      position: const LatLng(39.909187, 116.397451), // id 可省略，自动生成
-      icon: BitmapDescriptor.fromIconPath('assets/marker.png'),
-      infoWindow: const InfoWindow(title: '天安门'),
-      onDragEnd: (id, pos) => print('拖拽到 $pos'),
-    ),
-  },
-  polylines: {
-    Polyline(
-      points: const [LatLng(39.9, 116.4), LatLng(31.2, 121.5)],
-      geodesic: true, // 大地曲线
-    ),
-  },
-  polygons: {Polygon(points: [...], holes: [[...]])}, // 支持孔洞
-)
+  }
+}
 ```
 
-### 5. 自定义气泡（Widget → PNG）
+## 平台配置
+
+### Android
+
+插件自动引入高德「3D 地图 / 定位 / 搜索」三合一 SDK
+（mavenCentral：`com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`），
+无需手动配置 jar / so。
+
+在 `AndroidManifest.xml` 中补充权限（定位蓝点需要定位权限，地图本身只需网络）：
+
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+```
+
+可选：Android Key 也可以不走 Dart 传参，改在 Manifest 配置
+（此时 `AMapApiKey` 的 androidKey 传空串即可）：
+
+```xml
+<meta-data
+    android:name="com.amap.api.v2.apikey"
+    android:value="你的AndroidKey" />
+```
+
+### iOS
+
+插件通过 CocoaPods 自动引入 `AMap3DMap ~> 11.2`，Key 经
+`AMapInitializer.init` 注入，无需额外配置。最低部署版本 iOS 13.0。
+
+## 常用能力
+
+### 相机控制
 
 ```dart
-// 1. 把任意 Flutter Widget 渲染为 PNG（屏幕外截图，静态快照；
-//    返回快照的 png 字节 + 逻辑尺寸）
-final snapshot = await renderWidgetToPng(context, const Card(child: Text('自定义气泡')));
-// 2. 作为整个气泡窗口内容（务必带上逻辑尺寸，否则 iOS 会把
-//    pixelRatio 3 的 PNG 物理像素当点显示、放大 3 倍）
+// 移动 / 动画到指定位置
+await controller.moveCamera(CameraUpdate.newLatLngZoom(latLng, 15));
+await controller.animateCamera(CameraUpdate.newCameraPosition(
+  const CameraPosition(target: LatLng(31.2304, 121.4737), zoom: 14, bearing: 45),
+));
+
+// 其他工厂：newLatLng / newLatLngBounds / zoomTo / zoomBy /
+// zoomIn / zoomOut / zoomByFocus / scrollBy
+```
+
+### 差量更新覆盖物
+
+Marker / Polyline / Polygon / Circle 集合变更时，插件内部通过
+`MarkerUpdates` 等 diff 只把增 / 删 / 改三部分下发给原生端：
+
+```dart
+setState(() {
+  _markers.add(marker); // 直接改集合即可，无需手动计算差异
+});
+```
+
+### 自定义气泡（Widget → 气泡）
+
+```dart
+final snapshot = await renderWidgetToPng(context, const MyBubbleCard());
 final marker = Marker(
-  position: pos,
+  markerId: const MarkerId('custom_bubble'),
+  position: latLng,
   infoWindow: InfoWindow(
     content: BitmapDescriptor.fromBytes(
       snapshot.png,
       width: snapshot.width,
       height: snapshot.height,
     ),
+    show: true, // 添加时自动弹出
   ),
 );
-// 3. 手动控制显隐
-await controller.showInfoWindow(marker.id);
-await controller.hideInfoWindow(marker.id);
 ```
 
-### 6. 几何运算（互斥区域 XOR）
+### 几何运算（互斥区域）
 
 ```dart
-// 两圆的「不相交区域」，返回含孔洞、可直接上图的 Polygon 列表
-final rings = GeometryUtil.xorCircles(circleA, circleB);
-setState(() => polygons.addAll(rings));
-
-// 距离测量
-final meters = AMapUtil.distanceBetween(beiJing, shangHai);
+// 两个圆的 XOR 区域：返回含孔洞、可直接上图的 Polygon 列表
+final polygons = GeometryUtil.xorCircles(circleA, circleB);
 ```
 
-> ⚠️ `GeometryUtil` 以经纬度作为平面坐标运算，适用于城市级小范围场景。
+### 定位蓝点
 
-完整示例见 [example/](example/)（多页 demo：地图配置 / 覆盖物管理 / 相机控制 /
-几何运算 / 事件日志 / 定位蓝点 / 截图与审图号 / 自定义气泡 / 自定义地图样式）；
-从官方 `amap_flutter_map` 迁移指南见
-[MIGRATION.md](https://github.com/Sowaters/amap_maps_flutter_qs/blob/master/MIGRATION.md)。
+```dart
+AMapWidget(
+  myLocationEnabled: true,
+  myLocationStyleOptions: const MyLocationStyleOptions(
+    mode: MyLocationMode.track, // 定位 / 跟随 / 旋转等五种模式
+  ),
+)
+```
 
-运行 example 需自带 Key（经 `--dart-define` 注入，仓库不含真实凭据）：
+> 需先在原生层取得定位权限（Android 运行时权限、iOS `NSLocationWhenInUseUsageDescription`）。
+
+### 截图与审图号
+
+```dart
+final png = await controller.takeSnapshot();
+final approvalNo = await controller.getContentApprovalNumber(); // 上架合规需展示
+```
+
+### 中英文地图
+
+```dart
+AMapWidget(language: MapLanguage.english) // 支持创建时与动态切换
+```
+
+> SDK 限制：英文仅标准地图类型生效，且与自定义样式互斥。
+
+## 从 amap_flutter_map 迁移
+
+API 形状与官方 `amap_flutter_map` 3.0.0 对齐，绝大多数场景只需：
+
+1. 替换依赖：`amap_flutter_map` → `amap_maps_flutter_qs`
+2. 合并初始化：官方分散的 Key / 合规调用统一为 `AMapInitializer.init`
+3. 个别更名：如 `onPoiTouched`（原 `onPoiTapped` 仍保留别名）、
+   `limitBounds`（原 `CameraTargetBounds` 语义等价可用）
+
+## Example
+
+完整示例 App 覆盖地图配置、覆盖物管理、相机控制、几何运算、事件日志、
+定位蓝点、截图与审图号、自定义气泡、自定义地图样式九大场景：
 
 ```bash
 cd example
@@ -181,47 +237,12 @@ flutter run \
   --dart-define=AMAP_IOS_KEY=<你的iOSKey>
 ```
 
-## 平台差异
+## 相关链接
 
-| 能力 | Android | iOS |
-| --- | --- | --- |
-| 自定义地图样式（`customStyleOptions`） | ✅ | ✅ |
-| 定位蓝点样式（`myLocationStyleOptions` 完整样式） | ✅ | ✅ |
-| 地图截图 `takeSnapshot` | ✅ | ✅ |
-| Polyline 纹理线（`customTexture`）/ capType（含 arrow）/ joinType | ✅ | ✅ |
-| Marker `rotation` / `zIndex`（`alpha` 双端已支持） | ✅ | 待补齐 |
-
-其余特性（覆盖物 / 事件 / 相机 / 手势 / UI 开关 / `limitBounds` / 审图号等）双端一致。
-
-## 合规注意
-
-- 地图页面需展示**审图号**：`controller.getMapContentApprovalNumber()`（普通地图）、
-  `controller.getSatelliteImageApprovalNumber()`（卫星地图）
-  （Android 查询；iOS 由 SDK 在地图上自动展示）
-- 隐私合规方案：<https://lbs.amap.com/news/sdkhgsy>
-- 本插件为社区插件，与高德官方无隶属关系
-
-## 第三方组件声明
-
-- 本插件为独立开发的社区作品，与高德官方无隶属关系，亦未使用高德官方
-  `amap_flutter_map` 的源码（仅 API 形状对齐以方便迁移）。
-- Android 端通过 mavenCentral 引入高德官方 SDK
-  （`com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`），iOS 端通过
-  CocoaPods trunk 引入（`AMap3DMap ~> 11.2`）——双端均经官方分发渠道，本插件不携带
-  任何 SDK 二进制。SDK 的著作权归属高德软件（AutoNavi / AMap），其获取与使用须遵守
-  [高德开放平台服务协议](https://lbs.amap.com/home/terms/)。
-- 使用本插件即表示您已按高德要求注册开发者账号、申请合法 Key，并在 App 内
-  落地隐私合规（弹窗展示与用户同意）。
-
-## Roadmap
-
-- [x] M0：地图渲染 + 相机 + 事件
-- [x] MVP（0.0.1）：覆盖物差量更新、事件全量、手势/UI 开关动态更新、
-  自定义气泡、几何运算 XOR、`limitBounds`、`zoomByFocus`（当前）
-- [x] iOS 平台差异补齐：takeSnapshot / poiTap / infoWindowTap / 蓝点样式 / 自定义地图样式
-- [ ] v1.1：Marker `rotation` / `zIndex` 的 iOS 对接、AMapUtil 扩展
-- [ ] v2.0：独立服务插件（搜索 / 地理编码）
+- [高德开放平台](https://lbs.amap.com) / [控制台申请 Key](https://console.amap.com)
+- [高德 Android SDK 更新日志](https://lbs.amap.com/api/android-sdk/changelog)
+- [问题反馈](https://github.com/Sowaters/amap_maps_flutter_qs/issues)
 
 ## License
 
-MIT
+[MIT](LICENSE)
