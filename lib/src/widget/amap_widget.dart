@@ -128,6 +128,11 @@ class AMapWidget extends StatefulWidget {
   /// 是否显示比例尺。
   final bool scaleEnabled;
 
+  /// 是否显示缩放按钮（Android 地图右下角 +/- 控件）。
+  ///
+  /// iOS 的 [MAMapView] 没有内建缩放按钮，该值在 iOS 上被忽略。
+  final bool zoomControlsEnabled;
+
   /// 是否允许缩放手势（双指捏合 / 双击）。
   final bool zoomGesturesEnabled;
 
@@ -187,6 +192,7 @@ class AMapWidget extends StatefulWidget {
     this.labelsEnabled = true,
     this.compassEnabled = false,
     this.scaleEnabled = true,
+    this.zoomControlsEnabled = true,
     this.zoomGesturesEnabled = true,
     this.scrollGesturesEnabled = true,
     this.rotateGesturesEnabled = true,
@@ -472,7 +478,8 @@ class _AMapWidgetState extends State<AMapWidget> {
         oldWidget.buildingsEnabled != widget.buildingsEnabled ||
         oldWidget.labelsEnabled != widget.labelsEnabled ||
         oldWidget.compassEnabled != widget.compassEnabled ||
-        oldWidget.scaleEnabled != widget.scaleEnabled;
+        oldWidget.scaleEnabled != widget.scaleEnabled ||
+        oldWidget.zoomControlsEnabled != widget.zoomControlsEnabled;
     if (uiChanged) {
       _invokeMapMethod('map#setUiOptions', _uiOptions);
     }
@@ -575,6 +582,7 @@ class _AMapWidgetState extends State<AMapWidget> {
     'labelsEnabled': widget.labelsEnabled,
     'compassEnabled': widget.compassEnabled,
     'scaleEnabled': widget.scaleEnabled,
+    'zoomControlsEnabled': widget.zoomControlsEnabled,
   };
 
   /// 手势开关序列化（creationParams 与动态更新共用）。

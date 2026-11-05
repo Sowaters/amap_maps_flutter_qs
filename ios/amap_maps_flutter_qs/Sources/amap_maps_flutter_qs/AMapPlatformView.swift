@@ -429,6 +429,8 @@ public class AMapPlatformView: NSObject, FlutterPlatformView {
     if let scale = options["scaleEnabled"] as? Bool {
       mapView.showsScale = scale
     }
+    // zoomControlsEnabled（Android 右下角 +/- 缩放按钮）为 Android 独有 UI，
+    // MAMapView 无对应属性，此处有意不处理
   }
 
   /// 自定义地图样式（对齐 Android `applyCustomStyle`）。

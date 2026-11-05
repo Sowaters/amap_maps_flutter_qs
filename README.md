@@ -16,7 +16,8 @@ API 形状对齐 `google_maps_flutter` 与官方插件，便于平滑迁移。
 - **一站式初始化**：`AMapInitializer.init` 同时完成 ApiKey 注入与隐私合规同步
   （Android / iOS 双端合规接口均已封装）
 - **全量地图能力**：地图类型、中英文切换、路况 / POI / 建筑等 UI 开关、
-  四种手势开关，均支持创建时配置与动态更新
+  缩放按钮（`zoomControlsEnabled`，Android）、四种手势开关，
+  均支持创建时配置与动态更新
 - **相机控制**：10 种 `CameraUpdate` 工厂 + `moveCamera` / `animateCamera`、
   缩放范围、可视区域边界限制
 - **覆盖物**：Marker / Polyline / Polygon / Circle，内置**差量更新引擎**

@@ -229,6 +229,8 @@ class AMapPlatformView(
         val ui = amap.uiSettings
         (options["compassEnabled"] as? Boolean)?.let { ui.isCompassEnabled = it }
         (options["scaleEnabled"] as? Boolean)?.let { ui.isScaleControlsEnabled = it }
+        // 右下角 +/- 缩放按钮（iOS 无此 UI，该开关仅 Android 生效）
+        (options["zoomControlsEnabled"] as? Boolean)?.let { ui.isZoomControlsEnabled = it }
     }
 
     private fun applyGestures(json: Any?) {

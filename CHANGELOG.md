@@ -1,3 +1,11 @@
+## 0.1.5
+
+### 新增
+
+- **`AMapWidget.zoomControlsEnabled`**：控制 Android 地图右下角 +/- 缩放按钮的
+  显示与隐藏（默认 true，与 SDK 默认一致）。iOS 的 `MAMapView` 无内建缩放
+  按钮，该开关在 iOS 上被忽略
+
 ## 0.1.4
 
 ### 修复
