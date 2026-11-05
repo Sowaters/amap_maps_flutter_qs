@@ -1281,6 +1281,8 @@ extension AMapPlatformView: MAMapViewDelegate {
     didNotifyMapLoaded = true
     AMapLog.d("map#\(mapId) mapLoaded（底图首帧就绪）")
     resyncOverlaysIfRendererNeverRequested()
+    // 重试挂起的气泡补选（地图初始化期间 selectAnnotation 被忽略的场景）
+    retryPendingSelections()
     // 二次校正（跳变重绘）：mapInitComplete 时的 setMapStatus 可能只改了
     // 逻辑状态、渲染管线未跟随（点击/瓦片仍在世界原点角 → 蓝屏）。底图首帧
     // 就绪后重设一次初始相机，用相机跳变强制渲染管线重绘（替代已移除的
@@ -1452,13 +1454,61 @@ extension AMapPlatformView: MAMapViewDelegate {
   /// 的 annotation 是 no-op）。
   /// 注意：vendored 头文件为不带泛型的 NSArray *，Swift 桥接为 [Any]，
   /// 声明成 [MAAnnotationView] 会导致签名不匹配、委托永不被调。
+  ///
+  /// 时序坑（2026-11-05 真机实测）：本委托触发时视图刚加入、布局未完成
+  /// （iOS 26 尤其明显，与 create 阶段 overlay 不渲染 rendererFor 的问题
+  /// 同族），此处同步 selectAnnotation 会被 SDK 静默忽略 → 气泡永不弹出，
+  /// 且 programmaticSelection 残留会吞掉用户下一次真实点击。
+  /// 修复：异步到下一帧再选中；若仍被忽略（地图尚未 mapInitComplete 等），
+  /// 重新挂起，等 didAddAnnotationViews / mapLoaded 重试。
   public func mapView(_ mapView: MAMapView, didAddAnnotationViews views: [Any]) {
     for case let view as MAAnnotationView in views {
       guard let marker = view.annotation as? QsMarker,
             pendingShowSelection.remove(marker.customId) != nil else { continue }
-      programmaticSelection.insert(marker.customId)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, !self.disposed else { return }
+        // 异步执行前 marker 可能已被移除（remove+add 差量更新竞态）
+        guard self.markersById[marker.customId] === marker else { return }
+        // 用户已抢先手动选中（或已选中）则无需补选
+        if self.mapView.selectedAnnotations.contains(where: {
+          ($0 as? QsMarker)?.customId == marker.customId
+        }) {
+          AMapLog.d("map#\(self.mapId) 补选跳过：id=\(marker.customId) 已选中")
+          return
+        }
+        self.programmaticSelection.insert(marker.customId)
+        self.mapView.selectAnnotation(marker, animated: false)
+        if self.mapView.selectedAnnotations.contains(where: {
+          ($0 as? QsMarker)?.customId == marker.customId
+        }) {
+          AMapLog.d("map#\(self.mapId) 补选气泡 id=\(marker.customId)（didAddAnnotationViews→async）")
+        } else {
+          // 地图未就绪等场景选中仍被忽略：重新挂起等待重试
+          self.pendingShowSelection.insert(marker.customId)
+          AMapLog.d("map#\(self.mapId) 补选被忽略，重新挂起 id=\(marker.customId)")
+        }
+      }
+    }
+  }
+
+  /// 地图就绪后重试挂起的气泡补选：覆盖「view 早已创建、但当时地图未完成
+  /// 初始化导致 selectAnnotation 被忽略」的场景（didAddAnnotationViews 只在
+  /// 新视图加入时触发，view 已存在时不会再来）。view 未创建的保持挂起，
+  /// 由后续 didAddAnnotationViews 补选。
+  private func retryPendingSelections() {
+    guard !pendingShowSelection.isEmpty, !disposed else { return }
+    // 快照遍历：循环体内会 remove 命中项，直接遍历 Set 属于遍历中变更
+    for id in Array(pendingShowSelection) {
+      guard let marker = markersById[id], markerViewsCreated.contains(id) else { continue }
+      programmaticSelection.insert(id)
       mapView.selectAnnotation(marker, animated: false)
-      AMapLog.d("map#\(mapId) 补选气泡 id=\(marker.customId)（didAddAnnotationViews）")
+      if mapView.selectedAnnotations.contains(where: { ($0 as? QsMarker)?.customId == id }) {
+        pendingShowSelection.remove(id)
+        AMapLog.d("map#\(mapId) mapLoaded 重试补选成功 id=\(id)")
+      } else {
+        programmaticSelection.remove(id)
+        AMapLog.d("map#\(mapId) mapLoaded 重试补选仍被忽略 id=\(id)")
+      }
     }
   }
 

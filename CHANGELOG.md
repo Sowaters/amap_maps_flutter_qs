@@ -1,3 +1,16 @@
+## 0.1.4
+
+### 修复
+
+- **iOS `InfoWindow.show: true` 不自动弹出气泡**：`addMarker` 挂起的补选在
+  `didAddAnnotationViews` 委托回调里同步 `selectAnnotation`，此时视图刚加入、
+  布局未完成（iOS 26 尤其明显），选中被 SDK 静默忽略且 `pendingShowSelection`
+  已被消费、永不重试 → 气泡不弹且 `programmaticSelection` 残留吞掉用户下一次
+  真实点击。修复：补选改为异步到下一帧并验证结果，仍被忽略则重新挂起；
+  `mapLoaded`（底图首帧就绪）时对「view 已创建但从未选中成功」的挂起项重试。
+  Android 端不受影响（`addMarker` 后同步 `showInfoWindow()`，状态挂在 marker
+  上，不受地图初始化时序影响）。
+
 ## 0.1.3
 
 ### 修复
