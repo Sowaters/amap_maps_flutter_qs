@@ -237,7 +237,7 @@ class _AMapWidgetState extends State<AMapWidget> {
 
   /// 原生 PlatformView 是否已创建。
   ///
-  /// iOS 的 UiKitView 与 Android 的 initExpensiveAndroidView 均为异步创建：
+  /// iOS 的 UiKitView 与 Android 的 initAndroidView（TLHC）均为异步创建：
   /// build() 返回后原生 AMapPlatformView（即 `map#<mapId>` 通道 handler 的
   /// 注册方）稍后才存在。创建完成前任何通道下发都会 MissingPluginException。
   bool _platformViewCreated = false;
@@ -256,8 +256,8 @@ class _AMapWidgetState extends State<AMapWidget> {
 
   /// 路由转场状态监听：pop 反向动画开始 → 冻结原生地图（Android）。
   ///
-  /// 背景：Android 端 Hybrid Composition 模式下地图是真实 GLSurfaceView，
-  /// GL 层的 surface/EGL 销毁在 GL 线程异步完成。若等到 pop 动画结束后的
+  /// 背景：Android 端地图的 GL surface（SurfaceTexture/EGL）销毁在渲染线程
+  /// 异步完成，若等到 pop 动画结束后的
   /// widget 卸载才处理，最后一帧地图会叠在已返回的上一页上闪现 1~2 帧。
   /// 在转场开始瞬间原生侧"冻结"（截图接管 + 隐藏 GL 层），GL 层销毁的
   /// 视觉差被截图无缝覆盖；转场被取消（预测性返回滑回）则解冻恢复。
@@ -618,8 +618,9 @@ class _AMapWidgetState extends State<AMapWidget> {
   Widget build(BuildContext context) {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        // Hybrid Composition：AMap 3D 地图基于 GLSurfaceView，
-        // 必须用混合合成模式（initExpensiveAndroidView）保证渲染一致。
+        // TLHC（Texture Layer Hybrid Composition）：Android 端已从
+        // SurfaceView 版 MapView 切换为 TextureMapView（普通 View 节点），
+        // Flutter 3+ 默认的 TLHC 模式可直接合成，无需再走 Hybrid Composition。
         // 首次布局后由 framework 自动触发 controller.create()。
         return PlatformViewLink(
           viewType: _viewType,
@@ -630,7 +631,7 @@ class _AMapWidgetState extends State<AMapWidget> {
                 widget.gestureRecognizers ?? _defaultGestureRecognizers,
           ),
           onCreatePlatformView: (params) {
-            return PlatformViewsService.initExpensiveAndroidView(
+            return PlatformViewsService.initAndroidView(
               id: params.id,
               viewType: _viewType,
               layoutDirection: TextDirection.ltr,

@@ -1,3 +1,19 @@
+## 0.2.0
+
+### 变更
+
+- **Android 渲染架构升级：`MapView`（SurfaceView）→ `TextureMapView`
+  （TextureView）+ TLHC 合成**。旧 SurfaceView 版内容不经过 View 合成管线，
+  Flutter 只能用 Hybrid Composition（离屏渲染、多一次 GPU 拷贝）；换用
+  TextureView 后 Dart 侧改走 Flutter 3+ 默认的 TLHC 模式
+  （`initExpensiveAndroidView` → `initAndroidView`）：
+  - 滚动 / 动画与 Flutter 树同步更好，页面转场更顺滑
+  - Flutter widget 覆盖地图的层级、裁剪表现更自然
+  - GC/显存占用结构更优（TextureView 双缓冲略增 GPU 内存，约 20~40MB）
+  - 路由转场冻结机制（`map#freeze`）保留，兼容新渲染路径
+- API 无变化，Dart 层零改动即可升级；建议真机回归后升级
+  （重点验证：截图 `takeSnapshot`、自定义气泡、页面转场）
+
 ## 0.1.5
 
 ### 新增

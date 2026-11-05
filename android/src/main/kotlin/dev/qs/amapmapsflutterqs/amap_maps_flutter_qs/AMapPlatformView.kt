@@ -16,7 +16,7 @@ import android.widget.TextView
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdate
 import com.amap.api.maps.CameraUpdateFactory
-import com.amap.api.maps.MapView
+import com.amap.api.maps.TextureMapView
 import com.amap.api.maps.model.BitmapDescriptor
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.CameraPosition
@@ -40,7 +40,12 @@ import io.flutter.plugin.platform.PlatformView
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 
-/// 承载高德 [MapView] 的 PlatformView（Hybrid Composition 模式）。
+/// 承载高德 [TextureMapView] 的 PlatformView（Dart 侧 TLHC 模式合成）。
+///
+/// 为什么用 TextureMapView：旧 SurfaceView 版 MapView 的内容不经过 View
+/// 合成管线，Flutter 只能走 Hybrid Composition（离屏渲染，多一次 GPU 拷贝，
+/// 且滚动/动画同步差）；TextureView 是普通 View 节点，Flutter 3+ 默认的
+/// TLHC 模式可直接合成，性能与层级表现更好。
 ///
 /// 每个实例持有独立通道 `amap_maps_flutter_qs/map#<mapId>`，
 /// mapId 由 Dart 侧通过 creationParams 传入，保证两端一致。
@@ -79,7 +84,7 @@ class AMapPlatformView(
     private val mapId: Int = (creationParams["mapId"] as? Number)?.toInt()
         ?: throw IllegalArgumentException("AMapPlatformView: creationParams missing valid mapId")
     private val appContext: Context = context.applicationContext
-    private val mapView = MapView(context)
+    private val mapView = TextureMapView(context)
 
     /// 冻结截图层：pop 转场开始时把最后画面定格为静态图并立即隐藏 GLSurfaceView，
     /// 让 GL 层的异步销毁（surface/EGL 时序差）发生在用户还看着地图页的阶段，
@@ -985,8 +990,9 @@ class AMapPlatformView(
             frozen = true
             freezeView.setImageBitmap(bitmap)
             freezeView.visibility = View.VISIBLE
-            // GLSurfaceView 退场：surface 异步销毁期间，冻结截图与残帧内容
-            // 一致（同屏内容），视觉无感；转场结束时 GL 层早已销毁干净。
+            // TextureView 退场：SurfaceTexture/EGL 销毁在渲染线程异步完成，
+            // 冻结截图与残帧内容一致（同屏内容），视觉无感；
+            // 转场结束时 GL 层早已销毁干净。
             mapView.visibility = View.GONE
         }
     }
@@ -1011,10 +1017,10 @@ class AMapPlatformView(
         polylineById.clear()
         polygonById.clear()
         circleById.clear()
-        // GLSurfaceView 的 surface/EGL 销毁是异步的（GL 线程）：onPause 后最后一帧
-        // 地图仍占据合成层，直到 surfaceDestroyed 真正完成（日志可见 surface lost →
-        // releasing EGL context 的时序差）。若不先立即隐藏，返回上一页后残留帧会
-        // 叠现 1~2 帧，表现为"地图一闪而过"。先 GONE 让视图当场退出可见层级。
+        // TextureView 的 SurfaceTexture/EGL 销毁是异步的（渲染线程）：onPause 后
+        // 最后一帧地图仍可能占据合成层，直到 surfaceDestroyed 真正完成。
+        // 若不先立即隐藏，返回上一页后残留帧会叠现 1~2 帧，表现为"地图一闪而过"。
+        // 先 GONE 让视图当场退出可见层级。
         mapView.visibility = View.GONE
         mapView.onPause()
         mapView.onDestroy()
