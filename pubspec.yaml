@@ -4,7 +4,7 @@ description: >-
   (Dart + Kotlin + Swift) with Dart 3 sealed-class overlays, stream-based
   events and full privacy-compliance APIs. API-compatible with
   `amap_flutter_map` for easy migration.
-version: 0.2.0
+version: 0.2.1
 homepage: https://github.com/Sowaters/amap_maps_flutter_qs
 repository: https://github.com/Sowaters/amap_maps_flutter_qs
 issue_tracker: https://github.com/Sowaters/amap_maps_flutter_qs/issues

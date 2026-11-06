@@ -1,3 +1,10 @@
+## 0.2.1
+
+### 文档
+
+- 移除对官方 `amap_flutter_map` 维护状态的断言，README 与 pubspec
+  description 改为中性的自身定位描述（单包架构 / API 兼容、便于迁移）。
+
 ## 0.2.0
 
 ### 变更
