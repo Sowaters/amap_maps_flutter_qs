@@ -3,9 +3,8 @@
 [![pub package](https://img.shields.io/pub/v/amap_maps_flutter_qs.svg)](https://pub.dev/packages/amap_maps_flutter_qs)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-高德地图（AMap / Gaode）3D 地图 Flutter 插件。官方 `amap_flutter_map` 已停止维护，
-本插件是其现代继任者：单包架构（Dart + Android Kotlin + iOS Swift），
-API 形状对齐 `google_maps_flutter` 与官方插件，便于平滑迁移。
+高德地图（AMap / Gaode）3D 地图 Flutter 插件。单包架构（Dart + Android Kotlin + iOS Swift），
+API 形状对齐 `google_maps_flutter` 与官方 `amap_flutter_map`，便于从官方插件平滑迁移。
 
 | Demo 首页 | 自定义气泡（Widget 快照） |
 | --- | --- |
