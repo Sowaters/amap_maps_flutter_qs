@@ -58,6 +58,7 @@ class AMapPlatformView(
     context: Context,
     binaryMessenger: BinaryMessenger,
     creationParams: Map<*, *>,
+    private val isActivityResumed: () -> Boolean,
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     companion object {
@@ -115,6 +116,7 @@ class AMapPlatformView(
         "${AmapMapsFlutterQsPlugin.MAIN_CHANNEL}/map#$mapId",
     )
     private var disposed = false
+    private var activityResumed = false
 
     /// 地图是否已冻结（截图接管显示）。转场取消时解冻。
     private var frozen = false
@@ -153,14 +155,23 @@ class AMapPlatformView(
 
     init {
         channel.setMethodCallHandler(this)
-        AmapMapsFlutterQsPlugin.registerView(mapId, this)
 
         applyInitialOptions(creationParams)
 
-        // TODO(MVP): 接入 Activity Lifecycle 分发 onResume/onPause
         mapView.onCreate(null)
-        mapView.onResume()
+        AmapMapsFlutterQsPlugin.registerView(mapId, this)
+        setActivityResumed(isActivityResumed())
         notifyDartMapCreated()
+    }
+
+    fun setActivityResumed(resumed: Boolean) {
+        if (disposed || activityResumed == resumed) return
+        activityResumed = resumed
+        if (resumed) {
+            mapView.onResume()
+        } else {
+            mapView.onPause()
+        }
     }
 
     // ---- 初始配置（creationParams） ----
@@ -1022,7 +1033,10 @@ class AMapPlatformView(
         // 若不先立即隐藏，返回上一页后残留帧会叠现 1~2 帧，表现为"地图一闪而过"。
         // 先 GONE 让视图当场退出可见层级。
         mapView.visibility = View.GONE
-        mapView.onPause()
+        if (activityResumed) {
+            activityResumed = false
+            mapView.onPause()
+        }
         mapView.onDestroy()
     }
 

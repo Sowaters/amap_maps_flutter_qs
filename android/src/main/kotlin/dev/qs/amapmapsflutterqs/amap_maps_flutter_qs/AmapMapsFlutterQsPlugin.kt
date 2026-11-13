@@ -1,7 +1,13 @@
 package dev.qs.amapmapsflutterqs.amap_maps_flutter_qs
 
 import android.content.Context
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.lifecycle.HiddenLifecycleReference
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -11,7 +17,9 @@ import io.flutter.plugin.common.StandardMessageCodec
 /// 插件入口：注册主通道（init / 隐私合规）与地图 PlatformView。
 class AmapMapsFlutterQsPlugin :
     FlutterPlugin,
-    MethodCallHandler {
+    MethodCallHandler,
+    ActivityAware,
+    DefaultLifecycleObserver {
 
     companion object {
         const val VIEW_TYPE = "amap_maps_flutter_qs/map"
@@ -30,6 +38,33 @@ class AmapMapsFlutterQsPlugin :
     }
 
     private lateinit var context: Context
+    private var activityLifecycle: Lifecycle? = null
+    private var activityResumed = false
+
+    private fun attachActivity(binding: ActivityPluginBinding) {
+        val lifecycle = (binding.lifecycle as HiddenLifecycleReference).lifecycle
+        activityLifecycle?.removeObserver(this)
+        activityLifecycle = lifecycle
+        activityResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        mapViews.values.toList().forEach { it.setActivityResumed(activityResumed) }
+        lifecycle.addObserver(this)
+    }
+
+    private fun detachActivity() {
+        activityLifecycle?.removeObserver(this)
+        activityLifecycle = null
+        activityResumed = false
+        mapViews.values.toList().forEach { it.setActivityResumed(false) }
+    }
+
+    private fun setMapsResumed(resumed: Boolean) {
+        activityResumed = resumed
+        mapViews.values.toList().forEach { it.setActivityResumed(resumed) }
+    }
+
+    override fun onResume(owner: LifecycleOwner) = setMapsResumed(true)
+
+    override fun onPause(owner: LifecycleOwner) = setMapsResumed(false)
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -37,9 +72,21 @@ class AmapMapsFlutterQsPlugin :
         channel.setMethodCallHandler(this)
         binding.platformViewRegistry.registerViewFactory(
             VIEW_TYPE,
-            AMapPlatformViewFactory(binding.binaryMessenger, StandardMessageCodec.INSTANCE),
+            AMapPlatformViewFactory(
+                binding.binaryMessenger,
+                StandardMessageCodec.INSTANCE,
+            ) { activityResumed },
         )
     }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) = attachActivity(binding)
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
+        attachActivity(binding)
+
+    override fun onDetachedFromActivityForConfigChanges() = detachActivity()
+
+    override fun onDetachedFromActivity() = detachActivity()
 
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
@@ -99,6 +146,7 @@ class AmapMapsFlutterQsPlugin :
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        detachActivity()
         // 引擎卸载时逐个 dispose 遗留视图（dispose 幂等，Flutter 自动调用的
         // dispose 会二次进入但直接返回），避免视图 MethodChannel 的 handler
         // 挂在已卸载引擎上泄漏；静态注册表跨引擎共享，必须显式清空。

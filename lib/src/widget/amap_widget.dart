@@ -494,7 +494,7 @@ class _AMapWidgetState extends State<AMapWidget> {
     // 会导致连续开关地图页后新地图创建失败。Android 引擎会自动调 dispose，
     // 此消息为幂等兜底（未识别的 method 返回 notImplemented，无副作用）。
     // 通道若已被原生销毁（快速关闭页面），MissingPluginException 静默忽略。
-    _mapIdChannel.invokeMethod<void>('map#dispose').then((_) {}, onError: (_) {});
+    _channel.invokeMethod<void>('map#dispose').then((_) {}, onError: (_) {});
     _mapIdChannel.setMethodCallHandler(null);
     _iosViewChannel?.setMethodCallHandler(null);
     super.dispose();

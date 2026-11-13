@@ -1,3 +1,27 @@
+## 0.2.2
+
+### 修复
+
+- **Android 地图生命周期真实接入 Activity**：插件实现 `ActivityAware` +
+  `DefaultLifecycleObserver`，`MAMapView` 的 `onResume` / `onPause` 不再是
+  「创建即常驻 resumed」，改为跟随宿主 Activity 生命周期。App 退后台时地图
+  停止渲染（GPU / 电量开销下降），回前台自动恢复；Activity 重建
+  （旋转 / 分屏 / 深色模式切换）与多地图实例场景状态同步正确。
+  `dispose` 时仅在仍处于 resumed 状态才回调 `onPause`，避免对已暂停的
+  地图二次 `onPause`
+- **`map#dispose` 消息送达修复**：`AMapWidget` 销毁时兜底的 `map#dispose`
+  此前固定走 `map#<mapId>` 通道，在 iOS 混合合成模式下该通道与平台视图
+  通道不一致，消息被静默忽略；现改经 `_iosViewChannel ?? _mapIdChannel`
+  下发，iOS 销毁路径消息真正送达（Android 行为不变）
+
+### 示例与测试
+
+- Marker 压力测试页统计口径细化为三段：Dart 生成 / Flutter 提交 /
+  原生处理确认（以 `getCameraPosition` 作原生处理屏障），controller 未就绪
+  时按钮禁用
+- 集成测试重写：不再启动完整示例 App，改为最小化建图 + 原生相机控制断言，
+  Key 经 `demo_config.dart` 提供
+
 ## 0.2.1
 
 ### 文档

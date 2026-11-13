@@ -10,10 +10,11 @@ import io.flutter.plugin.platform.PlatformViewFactory
 class AMapPlatformViewFactory(
     private val binaryMessenger: BinaryMessenger,
     private val messageCodec: MessageCodec<Any>,
+    private val isActivityResumed: () -> Boolean,
 ) : PlatformViewFactory(messageCodec) {
 
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val params = args as? Map<*, *> ?: emptyMap<Any, Any>()
-        return AMapPlatformView(context, binaryMessenger, params)
+        return AMapPlatformView(context, binaryMessenger, params, isActivityResumed)
     }
 }

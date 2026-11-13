@@ -22,7 +22,10 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
 
   Set<Marker> _markers = const <Marker>{};
   String _status = '选择数量生成 Marker';
+  AMapController? _controller;
   int _lastGenMs = -1;
+  int _lastSubmitMs = -1;
+  int _lastNativeApplyMs = -1;
 
   /// 网格生成 n 个 Marker（行优先，环绕地图中心）。
   ///
@@ -50,27 +53,49 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
   }
 
   Future<void> _generateMarkers(int n) async {
+    final controller = _controller;
+    if (controller == null) return;
+
     final sw = Stopwatch()..start();
     final markers = _generate(n);
     final genMs = sw.elapsedMilliseconds;
 
     setState(() => _markers = markers);
 
-    // 等待差量下发后的下一帧完成，统计含构建的总耗时
+    // didUpdateWidget submits the diff during this frame; channel ordering lets
+    // the following controller query act as a native-processing barrier.
     await WidgetsBinding.instance.endOfFrame;
+    final submitMs = sw.elapsedMilliseconds;
+    await controller.getCameraPosition();
     sw.stop();
+    final nativeApplyMs = sw.elapsedMilliseconds - submitMs;
     if (!mounted) return;
     setState(() {
       _lastGenMs = genMs;
-      _status = '$n 个 Marker：生成 ${genMs}ms，含渲染首帧共 ${sw.elapsedMilliseconds}ms';
+      _lastSubmitMs = submitMs;
+      _lastNativeApplyMs = nativeApplyMs;
+      _status = '$n 个 Marker：Dart 生成 ${genMs}ms，Flutter 提交 ${submitMs}ms，'
+          '原生处理确认 ${nativeApplyMs}ms';
     });
   }
 
   Future<void> _clear() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final sw = Stopwatch()..start();
     setState(() => _markers = const <Marker>{});
     await WidgetsBinding.instance.endOfFrame;
+    final submitMs = sw.elapsedMilliseconds;
+    await controller.getCameraPosition();
+    sw.stop();
+    final nativeApplyMs = sw.elapsedMilliseconds - submitMs;
     if (!mounted) return;
-    setState(() => _status = '已清空（差量 toRemove 下发）');
+    setState(() {
+      _lastSubmitMs = submitMs;
+      _lastNativeApplyMs = nativeApplyMs;
+      _status = '已清空：Flutter 提交 ${submitMs}ms，'
+          '原生处理确认 ${nativeApplyMs}ms（差量 toRemove）';
+    });
   }
 
   @override
@@ -87,10 +112,13 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
               children: [
                 for (final n in const [200, 500, 1000, 2000])
                   FilledButton(
-                    onPressed: () => _generateMarkers(n),
+                    onPressed: _controller == null ? null : () => _generateMarkers(n),
                     child: Text('$n'),
                   ),
-                OutlinedButton(onPressed: _clear, child: const Text('清空')),
+                OutlinedButton(
+                  onPressed: _controller == null ? null : _clear,
+                  child: const Text('清空'),
+                ),
               ],
             ),
           ),
@@ -99,7 +127,8 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '$_status（上次生成 $_lastGenMs ms）',
+                '$_status（最近：生成 ${_lastGenMs}ms / 提交 ${_lastSubmitMs}ms / '
+                '原生确认 ${_lastNativeApplyMs}ms）',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -111,6 +140,9 @@ class _MarkerStressPageState extends State<MarkerStressPage> {
                 zoom: 11,
               ),
               markers: _markers,
+              onMapCreated: (controller) => setState(() {
+                _controller = controller;
+              }),
             ),
           ),
         ],

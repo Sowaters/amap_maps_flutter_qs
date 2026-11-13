@@ -1,16 +1,19 @@
 PODS:
   - AMap3DMap (11.2.100):
     - AMapFoundation (>= 1.9.0)
-  - amap_maps_flutter_qs (0.0.1):
+  - amap_maps_flutter_qs (0.2.2):
     - AMap3DMap (~> 11.2)
     - Flutter
   - AMapFoundation (1.9.1)
   - Flutter (1.0.0)
+  - integration_test (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - AMap3DMap (~> 11.2)
   - amap_maps_flutter_qs (from `.symlinks/plugins/amap_maps_flutter_qs/ios`)
   - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
 
 SPEC REPOS:
   trunk:
@@ -22,12 +25,15 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/amap_maps_flutter_qs/ios"
   Flutter:
     :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
 
 SPEC CHECKSUMS:
   AMap3DMap: 4718171fccb20e827d48ce9cefb20d67f35441f1
-  amap_maps_flutter_qs: caaaa776690c6925fa9c253be636a5a667656ee1
+  amap_maps_flutter_qs: be9e57b9dbc1df326969b693cc4205094487418e
   AMapFoundation: 8c511ce0584873bc6febb071365b2bfd62ce4a11
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
 
 PODFILE CHECKSUM: af2f1ad2ba7d54ddc07c29d12252b2b8ec9f385c
 
