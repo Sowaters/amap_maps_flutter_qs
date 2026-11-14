@@ -1440,13 +1440,16 @@ extension AMapPlatformView: MAMapViewDelegate {
     }
 
     // 锚点：Dart 约定 (0,0) 左上 (1,1) 右下；iOS annotationView 中心默认位于
-    // 坐标点（等价锚点 0.5,0.5），官方换算为 offset = size * (0.5 - anchor)
-    let anchor = marker.json["anchor"] as? [Double]
-    let u = (anchor?.count ?? 0) > 0 ? anchor![0] : 0.5
-    let v = (anchor?.count ?? 0) > 1 ? anchor![1] : 1.0
-    let width = image?.size.width ?? view.frame.width
-    let height = image?.size.height ?? view.frame.height
-    view.centerOffset = CGPoint(x: width * (0.5 - u), y: height * (0.5 - v))
+    // 坐标点（等价锚点 0.5,0.5），官方换算为 offset = size * (0.5 - anchor)。
+    // 仅对自定义图标生效：SDK 自带大头针（MAPinAnnotationView）默认已把针尖
+    // 对准坐标点，若再叠加 -height/2 的上移，针会整体悬在点的上方（真机实测）。
+    if let image {
+      let anchor = marker.json["anchor"] as? [Double]
+      let u = (anchor?.count ?? 0) > 0 ? anchor![0] : 0.5
+      let v = (anchor?.count ?? 0) > 1 ? anchor![1] : 1.0
+      view.centerOffset = CGPoint(
+        x: image.size.width * (0.5 - u), y: image.size.height * (0.5 - v))
+    }
     // flat：官方暂不在 iOS 开放，跳过
     return view
   }

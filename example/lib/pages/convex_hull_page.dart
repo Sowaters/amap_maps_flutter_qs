@@ -124,7 +124,8 @@ class _ConvexHullPageState extends State<ConvexHullPage> {
     final index = _marks.indexWhere((mark) => mark.id == markerId);
     if (index == -1) return;
     _marks[index] = (id: markerId, point: endPosition);
-    _lastAction = '拖拽 $markerId → (${endPosition.latitude.toStringAsFixed(5)}, '
+    _lastAction =
+        '拖拽 $markerId → (${endPosition.latitude.toStringAsFixed(5)}, '
         '${endPosition.longitude.toStringAsFixed(5)})';
     _rebuild();
   }
@@ -152,7 +153,8 @@ class _ConvexHullPageState extends State<ConvexHullPage> {
   Widget build(BuildContext context) {
     return OverlayDemoScaffold(
       title: '凸包围栏 · 凸包计算',
-      event: '顶点 ${_marks.length} 个 ｜ 凸包 '
+      event:
+          '顶点 ${_marks.length} 个 ｜ 凸包 '
           '${_polygons.isEmpty ? '-' : _polygons.first.points.length} 边 ｜ $_lastAction',
       groups: [
         OverlayActionGroup('操作（撤销按创建顺序回退）', [
@@ -172,7 +174,7 @@ class _ConvexHullPageState extends State<ConvexHullPage> {
             Marker(
               id: mark.id,
               position: mark.point,
-              icon: _fenceIcon ?? BitmapDescriptor.defaultMarker,
+              icon: BitmapDescriptor.defaultMarker,
               draggable: true,
               infoWindow: InfoWindow(title: '#${index + 1}'),
               onDragEnd: _onMarkerDragEnd,
