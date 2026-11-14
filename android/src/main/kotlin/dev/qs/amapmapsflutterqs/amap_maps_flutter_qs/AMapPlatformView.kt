@@ -124,15 +124,8 @@ class AMapPlatformView(
     /// 底图是否已加载完成（onMapLoaded 回调已触发）。
     private var mapLoaded = false
 
-    /// mapLoaded 前缓存的覆盖物类调用 (method, arguments)，加载完成后按序回放。
-    ///
-    /// 高德 SDK 在地图引擎初始化完成前调用 addMarker/addPolygon 等会静默丢弃
-    /// 覆盖物（社区反复踩坑确认）；而本插件的 mapCreated 在 PlatformView 构造
-    /// 时立即回发，早于引擎就绪。Dart 侧「onMapCreated 里立刻建覆盖物」或
-    /// 「带初始覆盖物创建地图」的调用都会落进该窗口 —— 必须缓冲到
-    /// mapLoaded 再回放，否则覆盖物不显示。
-    /// 通道调用与 mapLoaded 回调均在主线程，无并发问题。
-    private val pendingOverlayCalls = ArrayList<Pair<String, Any?>>()
+    /// mapLoaded 前缓存的覆盖物类调用，加载完成后按序回放（见 [OverlayCallBuffer]）。
+    private val pendingOverlayCalls = OverlayCallBuffer()
 
     // ---- 覆盖物注册表：Dart 侧 id -> 原生对象 ----
     private val markerById = LinkedHashMap<String, Marker>()
@@ -331,16 +324,16 @@ class AMapPlatformView(
     /// mapLoaded 后统一回放（见 [pendingOverlayCalls] 注释）。
     private fun applyInitialOverlays(params: Map<*, *>) {
         (params["markers"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
-            pendingOverlayCalls.add("map#updateMarkers" to mapOf("toAdd" to it))
+            pendingOverlayCalls.add("map#updateMarkers", mapOf("toAdd" to it))
         }
         (params["polylines"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
-            pendingOverlayCalls.add("map#updatePolylines" to mapOf("toAdd" to it))
+            pendingOverlayCalls.add("map#updatePolylines", mapOf("toAdd" to it))
         }
         (params["polygons"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
-            pendingOverlayCalls.add("map#updatePolygons" to mapOf("toAdd" to it))
+            pendingOverlayCalls.add("map#updatePolygons", mapOf("toAdd" to it))
         }
         (params["circles"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
-            pendingOverlayCalls.add("map#updateCircles" to mapOf("toAdd" to it))
+            pendingOverlayCalls.add("map#updateCircles", mapOf("toAdd" to it))
         }
     }
 
@@ -606,7 +599,14 @@ class AMapPlatformView(
         if (mapLoaded) {
             applyOverlayMethod(method, arguments)
         } else {
-            pendingOverlayCalls.add(method to arguments)
+            if (pendingOverlayCalls.isEmpty()) {
+                // 首次缓冲时提示一次：若 onMapLoaded 因 key 无效等原因永不回调，
+                // 覆盖物会一直停留在此缓冲区（表现为地图渲染但覆盖物不显示），
+                // 这条日志是排查该问题的入口。
+                Log.i(TAG, "map#$mapId mapLoaded pending: buffering overlay calls until engine ready")
+            }
+            Log.d(TAG, "map#$mapId buffer overlay call: $method")
+            pendingOverlayCalls.add(method, arguments)
         }
     }
 
@@ -631,6 +631,9 @@ class AMapPlatformView(
                     markerById[id]?.hideInfoWindow()
                     if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
                 }
+            // Dart/原生版本错配时可能出现未知 method：明确告警而非静默吞掉
+            // （缓冲回放场景下静默吞掉的后果更隐蔽，覆盖物会莫名缺失）。
+            else -> Log.w(TAG, "map#$mapId unknown overlay method: $method")
         }
     }
 
@@ -638,9 +641,7 @@ class AMapPlatformView(
     private fun flushPendingOverlays() {
         if (pendingOverlayCalls.isEmpty()) return
         Log.i(TAG, "map#$mapId flush ${pendingOverlayCalls.size} buffered overlay calls")
-        val calls = ArrayList(pendingOverlayCalls)
-        pendingOverlayCalls.clear()
-        for ((method, args) in calls) {
+        for ((method, args) in pendingOverlayCalls.drain()) {
             applyOverlayMethod(method, args)
         }
     }

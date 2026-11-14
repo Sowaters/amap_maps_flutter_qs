@@ -12,6 +12,7 @@ import 'pages/geometry_page.dart';
 import 'pages/map_types_page.dart';
 import 'pages/marker_stress_page.dart';
 import 'pages/my_location_page.dart';
+import 'pages/overlay_timing_page.dart';
 import 'pages/overlays_page.dart';
 import 'pages/snapshot_page.dart';
 import 'ui/demo_theme.dart';
@@ -111,6 +112,14 @@ const _sections = <_DemoSection>[
       tags: ['性能'],
     ),
     _DemoEntry(
+      Icons.schedule,
+      '覆盖物时序回归（0.2.4）',
+      '构造参数携带 / onMapCreated 立刻建两条路径各配 4 类覆盖物，'
+          '重建地图验证 mapLoaded 前缓冲回放（Android 0.2.3 及以前会丢失）',
+      _buildOverlayTiming,
+      tags: ['回归', 'Android'],
+    ),
+    _DemoEntry(
       Icons.fence,
       '凸包围栏 · 凸包计算',
       '点击地图用 fence.png 图标放点，Andrew 单调链实时计算凸包生成多边形；'
@@ -158,6 +167,7 @@ Widget _buildMyLocation(BuildContext context) => const MyLocationPage();
 Widget _buildOverlays(BuildContext context) => const OverlaysPage();
 Widget _buildCustomBubble(BuildContext context) => const CustomBubblePage();
 Widget _buildMarkerStress(BuildContext context) => const MarkerStressPage();
+Widget _buildOverlayTiming(BuildContext context) => const OverlayTimingPage();
 Widget _buildConvexHull(BuildContext context) => const ConvexHullPage();
 Widget _buildCamera(BuildContext context) => const CameraPage();
 Widget _buildEvents(BuildContext context) => const EventsPage();

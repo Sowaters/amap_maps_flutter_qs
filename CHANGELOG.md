@@ -10,6 +10,8 @@
   现将覆盖物类调用（4 个差量更新方法、`showInfoWindow` / `hideInfoWindow`、
   creationParams 初始覆盖物）在 `mapLoaded` 前缓冲，引擎就绪后按序回放；
   `mapLoaded` 后的调用路径不变。iOS 端不受影响（MAMapView 无此时序限制）。
+  内部：缓冲逻辑抽为独立的 `OverlayCallBuffer` 并补充单元测试；缓冲发生时
+  输出诊断日志，未知覆盖物 method 由静默忽略改为 `Log.w` 告警。
 
 ## 0.2.3
 
