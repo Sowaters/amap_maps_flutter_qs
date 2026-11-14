@@ -1,3 +1,16 @@
+## 0.2.4
+
+### 修复
+
+- **Android：mapLoaded 前添加的覆盖物不显示**。高德 SDK 在地图引擎初始化完成
+  前调用 `addMarker` / `addPolygon` 等会静默丢弃覆盖物；而插件的 `onMapCreated`
+  在 PlatformView 构造时即回发，早于引擎就绪。「在 `onMapCreated` 回调里立刻
+  建覆盖物」或「通过 `AMapWidget` 构造参数携带初始覆盖物」的调用都会落进该
+  窗口 —— 表现为地图正常渲染但 marker / polygon / polyline / circle 不显示。
+  现将覆盖物类调用（4 个差量更新方法、`showInfoWindow` / `hideInfoWindow`、
+  creationParams 初始覆盖物）在 `mapLoaded` 前缓冲，引擎就绪后按序回放；
+  `mapLoaded` 后的调用路径不变。iOS 端不受影响（MAMapView 无此时序限制）。
+
 ## 0.2.3
 
 ### 修复

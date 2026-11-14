@@ -121,6 +121,19 @@ class AMapPlatformView(
     /// 地图是否已冻结（截图接管显示）。转场取消时解冻。
     private var frozen = false
 
+    /// 底图是否已加载完成（onMapLoaded 回调已触发）。
+    private var mapLoaded = false
+
+    /// mapLoaded 前缓存的覆盖物类调用 (method, arguments)，加载完成后按序回放。
+    ///
+    /// 高德 SDK 在地图引擎初始化完成前调用 addMarker/addPolygon 等会静默丢弃
+    /// 覆盖物（社区反复踩坑确认）；而本插件的 mapCreated 在 PlatformView 构造
+    /// 时立即回发，早于引擎就绪。Dart 侧「onMapCreated 里立刻建覆盖物」或
+    /// 「带初始覆盖物创建地图」的调用都会落进该窗口 —— 必须缓冲到
+    /// mapLoaded 再回放，否则覆盖物不显示。
+    /// 通道调用与 mapLoaded 回调均在主线程，无并发问题。
+    private val pendingOverlayCalls = ArrayList<Pair<String, Any?>>()
+
     // ---- 覆盖物注册表：Dart 侧 id -> 原生对象 ----
     private val markerById = LinkedHashMap<String, Marker>()
     private val polylineById = LinkedHashMap<String, Polyline>()
@@ -213,8 +226,8 @@ class AMapPlatformView(
         // 初始相机
         (params["initialCameraPosition"] as? Map<*, *>)?.let(::applyCameraPosition)
 
-        // 覆盖物初始渲染
-        applyOverlays(params)
+        // 覆盖物初始渲染：引擎就绪前 add 会被丢弃，缓存到 mapLoaded 后回放
+        applyInitialOverlays(params)
 
         // 事件回调
         bindMapEvents()
@@ -314,11 +327,21 @@ class AMapPlatformView(
         )
     }
 
-    private fun applyOverlays(params: Map<*, *>) {
-        (params["markers"] as? List<*>)?.forEach { addMarker(it) }
-        (params["polylines"] as? List<*>)?.forEach { addPolyline(it) }
-        (params["polygons"] as? List<*>)?.forEach { addPolygon(it) }
-        (params["circles"] as? List<*>)?.forEach { addCircle(it) }
+    /// creationParams 携带的初始覆盖物：转成差量更新 payload 入缓冲区，
+    /// mapLoaded 后统一回放（见 [pendingOverlayCalls] 注释）。
+    private fun applyInitialOverlays(params: Map<*, *>) {
+        (params["markers"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
+            pendingOverlayCalls.add("map#updateMarkers" to mapOf("toAdd" to it))
+        }
+        (params["polylines"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
+            pendingOverlayCalls.add("map#updatePolylines" to mapOf("toAdd" to it))
+        }
+        (params["polygons"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
+            pendingOverlayCalls.add("map#updatePolygons" to mapOf("toAdd" to it))
+        }
+        (params["circles"] as? List<*>)?.takeIf { it.isNotEmpty() }?.let {
+            pendingOverlayCalls.add("map#updateCircles" to mapOf("toAdd" to it))
+        }
     }
 
     // ---- 覆盖物构建 ----
@@ -576,6 +599,52 @@ class AMapPlatformView(
     private fun idOf(json: Any?): String? =
         (json as? Map<*, *>)?.get("id") as? String
 
+    // ---- 覆盖物调用缓冲（mapLoaded 前缓存、加载后回放） ----
+
+    /// 覆盖物类调用统一入口：引擎就绪（mapLoaded）后直接执行，否则入缓冲区。
+    private fun applyOrBufferOverlay(method: String, arguments: Any?) {
+        if (mapLoaded) {
+            applyOverlayMethod(method, arguments)
+        } else {
+            pendingOverlayCalls.add(method to arguments)
+        }
+    }
+
+    /// 按 method 名分发覆盖物操作（缓冲回放与直连执行共用）。
+    private fun applyOverlayMethod(method: String, arguments: Any?) {
+        when (method) {
+            "map#updateMarkers" ->
+                applyOverlayUpdates(arguments, ::addMarker, ::removeMarker, ::updateMarker)
+            "map#updatePolylines" ->
+                applyOverlayUpdates(arguments, ::addPolyline, ::removePolyline)
+            "map#updatePolygons" ->
+                applyOverlayUpdates(arguments, ::addPolygon, ::removePolygon)
+            "map#updateCircles" ->
+                applyOverlayUpdates(arguments, ::addCircle, ::removeCircle)
+            "map#showInfoWindow" ->
+                (arguments as? String)?.let { id ->
+                    markerById[id]?.showInfoWindow()
+                    trackInfoWindowShown(id)
+                }
+            "map#hideInfoWindow" ->
+                (arguments as? String)?.let { id ->
+                    markerById[id]?.hideInfoWindow()
+                    if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
+                }
+        }
+    }
+
+    /// mapLoaded 后按序回放缓冲的覆盖物调用。
+    private fun flushPendingOverlays() {
+        if (pendingOverlayCalls.isEmpty()) return
+        Log.i(TAG, "map#$mapId flush ${pendingOverlayCalls.size} buffered overlay calls")
+        val calls = ArrayList(pendingOverlayCalls)
+        pendingOverlayCalls.clear()
+        for ((method, args) in calls) {
+            applyOverlayMethod(method, args)
+        }
+    }
+
     // ---- 事件绑定 ----
 
     private fun bindMapEvents() {
@@ -599,6 +668,10 @@ class AMapPlatformView(
             }
         })
         amap.setOnMapLoadedListener {
+            mapLoaded = true
+            // 引擎就绪：先回放缓冲的覆盖物，再通知 Dart（回调里 Dart 侧可能
+            // 立刻继续下发覆盖物，此时 mapLoaded 已为 true，走直连路径）
+            flushPendingOverlays()
             notifyDart("mapLoaded", null)
         }
 
@@ -884,32 +957,31 @@ class AMapPlatformView(
                 result.success(null)
             }
             "map#updateMarkers" -> {
-                applyOverlayUpdates(call.arguments, ::addMarker, ::removeMarker, ::updateMarker)
+                applyOrBufferOverlay("map#updateMarkers", call.arguments)
                 result.success(null)
             }
             "map#updatePolylines" -> {
-                applyOverlayUpdates(call.arguments, ::addPolyline, ::removePolyline)
+                applyOrBufferOverlay("map#updatePolylines", call.arguments)
                 result.success(null)
             }
             "map#updatePolygons" -> {
-                applyOverlayUpdates(call.arguments, ::addPolygon, ::removePolygon)
+                applyOrBufferOverlay("map#updatePolygons", call.arguments)
                 result.success(null)
             }
             "map#updateCircles" -> {
-                applyOverlayUpdates(call.arguments, ::addCircle, ::removeCircle)
+                applyOrBufferOverlay("map#updateCircles", call.arguments)
                 result.success(null)
             }
             "map#showInfoWindow" -> {
+                // marker 可能在缓冲区里尚未创建，同样走缓冲保证时序
                 (call.arguments as? String)?.let { id ->
-                    markerById[id]?.showInfoWindow()
-                    trackInfoWindowShown(id)
+                    applyOrBufferOverlay("map#showInfoWindow", id)
                 }
                 result.success(null)
             }
             "map#hideInfoWindow" -> {
                 (call.arguments as? String)?.let { id ->
-                    markerById[id]?.hideInfoWindow()
-                    if (shownInfoWindowMarkerId == id) shownInfoWindowMarkerId = null
+                    applyOrBufferOverlay("map#hideInfoWindow", id)
                 }
                 result.success(null)
             }
@@ -1028,6 +1100,7 @@ class AMapPlatformView(
         polylineById.clear()
         polygonById.clear()
         circleById.clear()
+        pendingOverlayCalls.clear()
         // TextureView 的 SurfaceTexture/EGL 销毁是异步的（渲染线程）：onPause 后
         // 最后一帧地图仍可能占据合成层，直到 surfaceDestroyed 真正完成。
         // 若不先立即隐藏，返回上一页后残留帧会叠现 1~2 帧，表现为"地图一闪而过"。
