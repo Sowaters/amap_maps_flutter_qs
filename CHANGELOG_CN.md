@@ -1,0 +1,206 @@
+## 0.2.5
+
+### 变更
+
+- **解除对 Material 库的依赖**：核心 Dart 源码由 `flutter/material.dart`
+  改为引用 `flutter/widgets.dart`，未使用 Material 的应用也可直接依赖本插件，
+  无 API 变化。
+
+### 文档
+
+- README 与 CHANGELOG 改为英文为主，顶部链接中文副本
+  （`README_CN.md` / `CHANGELOG_CN.md`）。
+
+## 0.2.4
+
+### 修复
+
+- **Android：mapLoaded 前添加的覆盖物不显示**。高德 SDK 在地图引擎初始化完成
+  前调用 `addMarker` / `addPolygon` 等会静默丢弃覆盖物；而插件的 `onMapCreated`
+  在 PlatformView 构造时即回发，早于引擎就绪。「在 `onMapCreated` 回调里立刻
+  建覆盖物」或「通过 `AMapWidget` 构造参数携带初始覆盖物」的调用都会落进该
+  窗口 —— 表现为地图正常渲染但 marker / polygon / polyline / circle 不显示。
+  现将覆盖物类调用（4 个差量更新方法、`showInfoWindow` / `hideInfoWindow`、
+  creationParams 初始覆盖物）在 `mapLoaded` 前缓冲，引擎就绪后按序回放；
+  `mapLoaded` 后的调用路径不变。iOS 端不受影响（MAMapView 无此时序限制）。
+  内部：缓冲逻辑抽为独立的 `OverlayCallBuffer` 并补充单元测试；缓冲发生时
+  输出诊断日志，未知覆盖物 method 由静默忽略改为 `Log.w` 告警。
+
+## 0.2.3
+
+### 修复
+
+- **iOS Marker 锚点仅对自定义图标生效**：此前对 SDK 自带大头针
+  （`MAPinAnnotationView`）也套用 `centerOffset = size * (0.5 - anchor)`，
+  针尖本已对准坐标点再叠加 -height/2 上移，导致大头针整体悬在坐标上方
+  （真机实测）。现仅在使用自定义图标（`image` 非空）时应用锚点换算，
+  默认大头针位置恢复正确。
+
+## 0.2.2
+
+### 修复
+
+- **Android 地图生命周期真实接入 Activity**：插件实现 `ActivityAware` +
+  `DefaultLifecycleObserver`，`MAMapView` 的 `onResume` / `onPause` 不再是
+  「创建即常驻 resumed」，改为跟随宿主 Activity 生命周期。App 退后台时地图
+  停止渲染（GPU / 电量开销下降），回前台自动恢复；Activity 重建
+  （旋转 / 分屏 / 深色模式切换）与多地图实例场景状态同步正确。
+  `dispose` 时仅在仍处于 resumed 状态才回调 `onPause`，避免对已暂停的
+  地图二次 `onPause`
+- **`map#dispose` 消息送达修复**：`AMapWidget` 销毁时兜底的 `map#dispose`
+  此前固定走 `map#<mapId>` 通道，在 iOS 混合合成模式下该通道与平台视图
+  通道不一致，消息被静默忽略；现改经 `_iosViewChannel ?? _mapIdChannel`
+  下发，iOS 销毁路径消息真正送达（Android 行为不变）
+
+### 示例与测试
+
+- Marker 压力测试页统计口径细化为三段：Dart 生成 / Flutter 提交 /
+  原生处理确认（以 `getCameraPosition` 作原生处理屏障），controller 未就绪
+  时按钮禁用
+- 集成测试重写：不再启动完整示例 App，改为最小化建图 + 原生相机控制断言，
+  Key 经 `demo_config.dart` 提供
+
+## 0.2.1
+
+### 文档
+
+- 移除对官方 `amap_flutter_map` 维护状态的断言，README 与 pubspec
+  description 改为中性的自身定位描述（单包架构 / API 兼容、便于迁移）。
+
+## 0.2.0
+
+### 变更
+
+- **Android 渲染架构升级：`MapView`（SurfaceView）→ `TextureMapView`
+  （TextureView）+ TLHC 合成**。旧 SurfaceView 版内容不经过 View 合成管线，
+  Flutter 只能用 Hybrid Composition（离屏渲染、多一次 GPU 拷贝）；换用
+  TextureView 后 Dart 侧改走 Flutter 3+ 默认的 TLHC 模式
+  （`initExpensiveAndroidView` → `initAndroidView`）：
+  - 滚动 / 动画与 Flutter 树同步更好，页面转场更顺滑
+  - Flutter widget 覆盖地图的层级、裁剪表现更自然
+  - GC/显存占用结构更优（TextureView 双缓冲略增 GPU 内存，约 20~40MB）
+  - 路由转场冻结机制（`map#freeze`）保留，兼容新渲染路径
+- API 无变化，Dart 层零改动即可升级；建议真机回归后升级
+  （重点验证：截图 `takeSnapshot`、自定义气泡、页面转场）
+
+## 0.1.5
+
+### 新增
+
+- **`AMapWidget.zoomControlsEnabled`**：控制 Android 地图右下角 +/- 缩放按钮的
+  显示与隐藏（默认 true，与 SDK 默认一致）。iOS 的 `MAMapView` 无内建缩放
+  按钮，该开关在 iOS 上被忽略
+
+## 0.1.4
+
+### 修复
+
+- **iOS `InfoWindow.show: true` 不自动弹出气泡**：`addMarker` 挂起的补选在
+  `didAddAnnotationViews` 委托回调里同步 `selectAnnotation`，此时视图刚加入、
+  布局未完成（iOS 26 尤其明显），选中被 SDK 静默忽略且 `pendingShowSelection`
+  已被消费、永不重试 → 气泡不弹且 `programmaticSelection` 残留吞掉用户下一次
+  真实点击。修复：补选改为异步到下一帧并验证结果，仍被忽略则重新挂起；
+  `mapLoaded`（底图首帧就绪）时对「view 已创建但从未选中成功」的挂起项重试。
+  Android 端不受影响（`addMarker` 后同步 `showInfoWindow()`，状态挂在 marker
+  上，不受地图初始化时序影响）。
+
+## 0.1.3
+
+### 修复
+
+- **Android release 构建开启 R8（minify）不再失败**：高德合包 SDK 在
+  mavenCentral 以纯 JAR 分发，无法自带 consumer proguard 规则，R8 会因
+  引用可选 GNSS 模块（`com.amap.ams.gnss.*`）报 Missing class。
+  插件现内置 `consumerProguardFiles`（dontwarn + keep `com.amap.**` /
+  `com.autonavi.**`），使用者**无需再自行配置任何 proguard 规则**
+- example 常驻开启 R8 作为回归验证
+
+## 0.1.2
+
+### 文档
+
+- README iOS 章节新增「SwiftPM 说明」：插件暂不支持 SwiftPM 的原因
+  （`AMap3DMap` 仅 CocoaPods trunk 分发）、开启 SwiftPM 集成时的
+  CocoaPods 自动回退行为与影响
+
+## 0.1.1
+
+### 文档
+
+- README iOS 章节补充 Podfile 要求：高德 `AMap3DMap` 为静态 framework，
+  宿主 Podfile 含 `use_frameworks!`（Flutter 新模板可能默认启用）会导致
+  `pod install` 失败且报错难定位，需移除该行并确保
+  `platform :ios, '13.0'`；确有依赖需要 frameworks 时改用
+  `use_frameworks! :linkage => :static`
+- README 新增「权限说明」章节：双端权限矩阵（地图显示 / 定位蓝点）、
+  Android Manifest 声明与运行时授权（permission_handler 示例）、
+  iOS `Info.plist` 用途描述声明
+
+## 0.1.0
+
+首个发布版本。单包架构（Dart 层 + Android Kotlin + iOS Swift），API 形状与官方
+`amap_flutter_map` 3.0.0 对齐，便于从官方插件平滑迁移。
+
+### 地图与初始化
+
+- `AMapInitializer.init`：Dart 侧 ApiKey 注入 + 隐私合规状态一站式同步
+  （Android `MapsInitializer`、iOS `AMapServices` / `MAMapView` 合规接口）
+- `AMapWidget` 地图渲染（Android Hybrid Composition、iOS UiKitView）
+- **地图语言切换**：`AMapWidget.language`（中/英，创建与动态更新）+
+  `AMapController.setLanguage()`。SDK 限制：英文仅标准地图类型生效、与自定义样式互斥
+- 相机控制：`moveCamera` / `animateCamera` + 10 种 `CameraUpdate` 工厂
+  （`newLatLng` / `newLatLngZoom` / `newLatLngBounds` / `newCameraPosition` /
+  `zoomTo` / `zoomBy` / `zoomIn` / `zoomOut` / `zoomByFocus` / `scrollBy`），
+  `zoomByFocus` Android 以投影换算模拟、iOS 映射原生 `zoomBy(_:focus:)`
+- 相机限制：`MinMaxZoomPreference` / `CameraTargetBounds` / `limitBounds`，
+  均支持创建时与动态更新
+- 手势开关（缩放/平移/旋转/倾斜）与 UI 开关（路况 / POI / 建筑 / 标注 / 指南针 /
+  比例尺），均支持 `didUpdateWidget` 动态更新
+- 定位蓝点（`MyLocationStyleOptions` 五种模式）、自定义地图样式（本地 `styleData`
+  二进制 + 云端样式 ID）
+- 地图事件全量：点击 / 长按 / POI / Marker 点击与拖拽 / InfoWindow 点击 /
+  相机移动（`onCameraMove` / `onCameraMoveEnd`）/ 加载完成（`onMapLoaded`）
+- 地图截图 `takeSnapshot`、可视区域查询 `getVisibleRegion`、审图号查询（普通 / 卫星）
+
+### 覆盖物
+
+- **差量更新引擎**：`MarkerUpdates` / `PolylineUpdates` / `PolygonUpdates` /
+  `CircleUpdates` diff，`didUpdateWidget` 仅下发增/删/改三部分
+- `BitmapDescriptor` 全量工厂（`defaultMarkerWithHue` / `fromIconPath` /
+  `fromAssetImage` / `fromBytes`）；Polyline 纹理线（`customTexture`）、
+  大地曲线（`geodesic`）、虚线样式；Polygon 孔洞（`holes`）
+- **自定义气泡**：`InfoWindow.content`（图片替换整个气泡）+
+  `renderWidgetToPng`（任意 Flutter Widget → PNG）+
+  `controller.showInfoWindow` / `hideInfoWindow`
+- **几何运算 `GeometryUtil`**（基于 clipper2）：`xorCircles` / `xorPolygons` /
+  `xorCirclePolygon` 计算互斥区域（XOR），返回含孔洞、可直接渲染的 `Polygon` 列表
+- 距离测量 `AMapUtil.distanceBetween` / `distanceToBounds`
+
+### 修复与整改
+
+- **修复 iOS 建图蓝屏（真根因定案）**：`limitBounds(null)` 曾在建图时把
+  `limitMapRect` 设为零矩形（其语义是「可见区域矩形边界」，零矩形即钳制到
+  世界原点并触发强制缩放适配）→ 整屏海面。现仅非零矩形才设置 limit，
+  解除时以全世界矩形恢复（10.1.600 / 11.3.100 双版本真机验证）
+- Android 气泡 tap-to-dismiss 对齐 iOS 原生 deselect 行为：地图空白点击时
+  主动关闭当前气泡，所有显隐入口统一同步追踪状态
+- 双端 `scrollBy` / `zoomByFocus` 单位语义修正为 Flutter 逻辑像素
+  （旧实现 3x 设备上实际滚动/焦点距离仅约请求量的 1/3）
+- 双端 `takeSnapshot` / 相机回调保证恰好应答一次（地图 dispose 后不再悬挂 Future）
+- iOS 代码审查整改：`viewFor` 复用池视图无条件重置视觉属性（消除残留）、
+  selection 残留清理、`newLatLngBounds` 退化矩形守卫、初始相机重设跳过守卫、
+  `UIScreen.main` 弃用 API 全部替换等
+- Android 代码审查整改：`updateMarker` 三处修复（`show=false` 关闭气泡、
+  部分更新不再误删气泡位图）、`mapId` 缺失 fail-fast、
+  反向索引 O(1) 回查与 handler 泄漏防护
+- iOS：`MAMapView(frame:)` 返回 nil（常见于隐私合规未通过 / Key 未注入）时
+  fail-fast 输出明确诊断，替代难以定位的 KVO 桥接 SIGABRT
+
+### 分发与示例
+
+- 双端 SDK 均经官方渠道分发，插件包零二进制：
+  Android mavenCentral `com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1`，
+  iOS CocoaPods trunk `AMap3DMap ~> 11.2`
+- example 重构为多页 demo（地图配置 / 覆盖物管理 / 相机控制 / 几何运算 /
+  事件日志 / 定位蓝点 / 截图与审图号 / 自定义气泡 / 自定义地图样式），
+  Key 经 `--dart-define` 注入，仓库不含真实凭据

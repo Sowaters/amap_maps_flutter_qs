@@ -174,7 +174,7 @@ class _ConvexHullPageState extends State<ConvexHullPage> {
             Marker(
               id: mark.id,
               position: mark.point,
-              icon: BitmapDescriptor.defaultMarker,
+              icon: _fenceIcon ?? BitmapDescriptor.defaultMarker,
               draggable: true,
               infoWindow: InfoWindow(title: '#${index + 1}'),
               onDragEnd: _onMarkerDragEnd,
